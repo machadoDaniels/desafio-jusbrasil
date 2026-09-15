@@ -1,0 +1,58 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="3553.0748893312375" height="1236.011315892736" viewBox="-825.1628923136861 -774.752909551971 3553.0748893312375 1236.011315892736">
+<defs><marker id="arrowhead" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto"><path d="M 0 0 L 8 4 L 0 8 Z" fill="#343a40"/></marker></defs>
+<rect x="-825.1628923136861" y="-774.752909551971" width="3553.0748893312375" height="1236.011315892736" fill="white"/>
+<polyline points="801.3223530217948,36.81072911109103 1073.4795807695589,211.92689104964393" fill="none" stroke="#1e1e1e" stroke-width="2" marker-end="url(#arrowhead)"/>
+<polygon points="-208.1589910353295,-118.40115837306121 -49.004321250196824,9.30788276887074 -208.1589910353295,137.0169239108027 -367.3136608204622,9.30788276887074" fill="transparent" stroke="#1e1e1e" stroke-width="2" opacity="1.0"/>
+<rect x="-795.1628923136861" y="-78.50651358919731" width="201.890625" height="174.203125" rx="5" fill="transparent" stroke="#1e1e1e" stroke-width="2" opacity="1.0"/>
+<polyline points="-587.2722673136861,8.637550887030791 -363.3136401894972,9.573760049447781" fill="none" stroke="#1e1e1e" stroke-width="2" marker-end="url(#arrowhead)"/>
+<rect x="107.42498046918064" y="-76.98239874937917" width="201.890625" height="174.203125" rx="5" fill="transparent" stroke="#1e1e1e" stroke-width="2" opacity="1.0"/>
+<polyline points="-53.00433357714271,9.618227924637939 101.42498046918064,10.11719772559636" fill="none" stroke="#1e1e1e" stroke-width="2" marker-end="url(#arrowhead)"/>
+<polygon points="651.9705951327402,-118.19357523325726 823.2874922499766,12.116630291538115 651.9705951327402,142.4268358163335 480.6536980155038,12.116630291538115" fill="transparent" stroke="#1e1e1e" stroke-width="2" opacity="1.0"/>
+<polyline points="315.3156054691807,10.224558207930189 485.4039560279125,12.718454404941353" fill="none" stroke="#1e1e1e" stroke-width="2" marker-end="url(#arrowhead)"/>
+<ellipse cx="1148.4923434875104" cy="274.22515896871687" rx="95.11022884569093" ry="86.91030106523834" fill="transparent" stroke="#1e1e1e" stroke-width="2" opacity="1.0"/>
+<polyline points="757.2465915555456,-45.36221048865188 1073.8729036475677,-220.33991260147207" fill="none" stroke="#1e1e1e" stroke-width="2" marker-end="url(#arrowhead)"/>
+<polygon points="1605.7007283323273,-372.28639933844255 1759.332769626478,-242.72720814265205 1605.7007283323273,-113.16801694686154 1452.0686870381767,-242.72720814265205" fill="transparent" stroke="#1e1e1e" stroke-width="2" opacity="1.0"/>
+<ellipse cx="1172.979412630807" cy="-238.74498228973061" rx="95.11022884569093" ry="86.91030106523834" fill="transparent" stroke="#1e1e1e" stroke-width="2" opacity="1.0"/>
+<polyline points="1274.0895909238025,-238.83789035638304 1455.6940674432622,-242.17611527481074" fill="none" stroke="#1e1e1e" stroke-width="2" marker-end="url(#arrowhead)"/>
+<ellipse cx="2013.4025562538723" cy="-372.784353908621" rx="95.11022884569093" ry="86.91030106523834" fill="transparent" stroke="#1e1e1e" stroke-width="2" opacity="1.0"/>
+<ellipse cx="2011.8777182720708" cy="-70.47154964438533" rx="95.11022884569093" ry="86.91030106523834" fill="transparent" stroke="#1e1e1e" stroke-width="2" opacity="1.0"/>
+<polyline points="1754.994371443846,-247.10530251547428 1912.4131971305458,-368.2427395911121" fill="none" stroke="#1e1e1e" stroke-width="2" marker-end="url(#arrowhead)"/>
+<polyline points="1754.615132328434,-236.32391680649437 1919.6955014264427,-108.64431275882612" fill="none" stroke="#1e1e1e" stroke-width="2" marker-end="url(#arrowhead)"/>
+<polyline points="1541.7672652441127,-733.2682239175273 1542.1835818712225,-610.1121199052845 1541.7867478849425,-596.0913322641061 1548.269559440444,-590.0331233007348 1570.8456272111512,-584.9059168686196 1609.005576808957,-583.3093813777202 1645.4648852015057,-585.8584841549921 1664.835984194487,-591.9546173428791 1667.5680155841308,-597.0937215709214 1667.9517195027634,-608.3817554562752 1667.6505565433713,-722.9361141966829 1666.9716385633103,-733.7593904286539 1658.8649404020248,-739.8085907125276 1641.793964114659,-743.3119674272275 1602.891515658082,-746.2585573621293 1571.701618365083,-744.5014991491381 1547.1709759659475,-738.5417720785528 1541.6990016399839,-733.3422239589778 1541.7672652441127,-733.2682239175273" fill="none" stroke="#0a11d3" stroke-width="1"/>
+<polyline points="1542.7509949142668,-639.8271048712714 1546.080662119316,-634.2375174288323 1560.4401402123417,-629.5479049321934 1579.547674836327,-626.7079039606425 1609.4820142052909,-626.4491074583962 1644.4143610238882,-628.2572079234315 1664.8152463317072,-634.8350365991801 1669.1346711558213,-640.4715688172952" fill="none" stroke="#0a11d3" stroke-width="1"/>
+<polyline points="1541.1856674456765,-687.1617649033593 1544.5153346507257,-681.5721774609202 1558.8748127437514,-676.8825649642813 1577.9823473677366,-674.0425639927304 1607.9166867367005,-673.783767490484 1642.8490335552979,-675.5918679555193 1663.2499188631168,-682.1696966312679 1667.5693436872311,-687.806228849383" fill="none" stroke="#0a11d3" stroke-width="1"/>
+<ellipse cx="1602.3030384038352" cy="-732.0679669231704" rx="62.72145612702212" ry="12.684942628800663" fill="#fff" stroke="#0a11d3" stroke-width="1" opacity="1.0"/>
+<ellipse cx="1651.1164283768462" cy="-699.6042142769434" rx="9.192430632359978" ry="9.976601245487865" fill="#fff" stroke="#0a11d3" stroke-width="1" opacity="1.0"/>
+<ellipse cx="1651.1164283768462" cy="-655.8069723293767" rx="9.192430632359978" ry="9.976601245487865" fill="#fff" stroke="#0a11d3" stroke-width="1" opacity="1.0"/>
+<ellipse cx="1651.1164283768462" cy="-608.2051897037638" rx="9.192430632359978" ry="9.976601245487865" fill="#fff" stroke="#0a11d3" stroke-width="1" opacity="1.0"/>
+<polyline points="1598.7394369995095,-369.0121920623282 1605.777977255646,-563.4010963412272" fill="none" stroke="#1e1e1e" stroke-width="2" marker-end="url(#arrowhead)"/>
+<rect x="2431.2749738270663" y="27.69237791120736" width="201.890625" height="174.203125" rx="5" fill="transparent" stroke="#1e1e1e" stroke-width="2" opacity="1.0"/>
+<polyline points="1249.5989397723329,273.4375985741233 2425.2749738270663,115.61679080748144" fill="none" stroke="#1e1e1e" stroke-width="2" marker-end="url(#arrowhead)"/>
+<polyline points="2090.119766930262,-22.114607531028696 2425.2749738270663,112.40320222892299" fill="none" stroke="#1e1e1e" stroke-width="2" marker-end="url(#arrowhead)"/>
+<polyline points="2107.9464007769075,-373.6558269868743 2431.678071431986,116.22007111893885" fill="none" stroke="#1e1e1e" stroke-width="2" marker-end="url(#arrowhead)"/>
+<text x="937.4009668956769" y="131.8688100803675" font-family="Virgil, Comic Sans MS, sans-serif" font-size="20" fill="#1e1e1e" text-anchor="middle">Caso Não</text>
+<text x="-208.1589910353295" y="4.307882768870741" font-family="Virgil, Comic Sans MS, sans-serif" font-size="20" fill="#1e1e1e" text-anchor="middle">1. Extração de</text>
+<text x="-208.1589910353295" y="29.30788276887074" font-family="Virgil, Comic Sans MS, sans-serif" font-size="20" fill="#1e1e1e" text-anchor="middle">Candidatados</text>
+<text x="-694.2175798136861" y="-8.904951089197311" font-family="Virgil, Comic Sans MS, sans-serif" font-size="20" fill="#1e1e1e" text-anchor="middle">Documentos</text>
+<text x="-694.2175798136861" y="16.09504891080269" font-family="Virgil, Comic Sans MS, sans-serif" font-size="20" fill="#1e1e1e" text-anchor="middle">Jurídicos</text>
+<text x="-694.2175798136861" y="41.09504891080269" font-family="Virgil, Comic Sans MS, sans-serif" font-size="20" fill="#1e1e1e" text-anchor="middle">(TXT)</text>
+<text x="208.37029296918064" y="-7.380836249379172" font-family="Virgil, Comic Sans MS, sans-serif" font-size="20" fill="#1e1e1e" text-anchor="middle">Candidatos</text>
+<text x="208.37029296918064" y="17.619163750620828" font-family="Virgil, Comic Sans MS, sans-serif" font-size="20" fill="#1e1e1e" text-anchor="middle">(tipo, trecho, início,</text>
+<text x="208.37029296918064" y="42.61916375062083" font-family="Virgil, Comic Sans MS, sans-serif" font-size="20" fill="#1e1e1e" text-anchor="middle">fim)</text>
+<text x="651.9705951327402" y="7.116630291538115" font-family="Virgil, Comic Sans MS, sans-serif" font-size="20" fill="#1e1e1e" text-anchor="middle">2. Classificador</text>
+<text x="651.9705951327402" y="32.116630291538115" font-family="Virgil, Comic Sans MS, sans-serif" font-size="20" fill="#1e1e1e" text-anchor="middle">de Completude</text>
+<text x="656.5776159277514" y="190.39786187691107" font-family="Virgil, Comic Sans MS, sans-serif" font-size="20" fill="#1e1e1e" text-anchor="middle">Define se é possível ou não</text>
+<text x="656.5776159277514" y="215.39786187691107" font-family="Virgil, Comic Sans MS, sans-serif" font-size="20" fill="#1e1e1e" text-anchor="middle">formular uma consulta</text>
+<text x="1148.4923434875104" y="281.72515896871687" font-family="Virgil, Comic Sans MS, sans-serif" font-size="20" fill="#1e1e1e" text-anchor="middle">Incompleta</text>
+<text x="915.5597476015565" y="-125.35106154506195" font-family="Virgil, Comic Sans MS, sans-serif" font-size="20" fill="#1e1e1e" text-anchor="middle">Caso Sim</text>
+<text x="1605.7007283323273" y="-260.22720814265205" font-family="Virgil, Comic Sans MS, sans-serif" font-size="20" fill="#1e1e1e" text-anchor="middle">3.</text>
+<text x="1605.7007283323273" y="-235.22720814265205" font-family="Virgil, Comic Sans MS, sans-serif" font-size="20" fill="#1e1e1e" text-anchor="middle">Classificador</text>
+<text x="1605.7007283323273" y="-210.22720814265205" font-family="Virgil, Comic Sans MS, sans-serif" font-size="20" fill="#1e1e1e" text-anchor="middle">de Veracidade</text>
+<text x="1172.979412630807" y="-231.24498228973061" font-family="Virgil, Comic Sans MS, sans-serif" font-size="20" fill="#1e1e1e" text-anchor="middle">Completa</text>
+<text x="2013.4025562538723" y="-365.284353908621" font-family="Virgil, Comic Sans MS, sans-serif" font-size="20" fill="#1e1e1e" text-anchor="middle">Real</text>
+<text x="2011.8777182720708" y="-62.971549644385334" font-family="Virgil, Comic Sans MS, sans-serif" font-size="20" fill="#1e1e1e" text-anchor="middle">Inventada</text>
+<text x="2539.350939865724" y="236.71957339932203" font-family="Virgil, Comic Sans MS, sans-serif" font-size="20" fill="#1e1e1e" text-anchor="middle">Pasta com jsons</text>
+<text x="2532.2202863270663" y="122.29394041120736" font-family="Virgil, Comic Sans MS, sans-serif" font-size="20" fill="#1e1e1e" text-anchor="middle">Predição</text>
+<text x="216.18401697090644" y="-89.8643586712202" font-family="Virgil, Comic Sans MS, sans-serif" font-size="20" fill="#1e1e1e" text-anchor="middle">JSONL</text>
+<text x="397.2246735095182" y="-1.1590286503131182" font-family="Virgil, Comic Sans MS, sans-serif" font-size="13.154572602888223" fill="#1e1e1e" text-anchor="middle">Para cada linha do jsonl</text>
+</svg>

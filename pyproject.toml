@@ -9,10 +9,14 @@ authors = [
 requires-python = ">=3.12"
 dependencies = [
     "kaggle>=2.2.4",
+    "langchain>=1.4.0",
+    "langchain-openai>=1.6.2",
+    "pydantic>=2.13.5",
+    "pyyaml>=6.0.3",
 ]
 
 [project.scripts]
-desafio-jusbrasil = "desafio_jusbrasil:main"
+desafio-jusbrasil = "desafio_jusbrasil.orchestrator:main"
 
 [build-system]
 requires = ["uv_build>=0.12.0,<0.13.0"]

@@ -1,0 +1,90 @@
+classDiagram
+    direction LR
+
+    class Orquestrador {
+        -LeitorDocumentos leitor
+        -ExtratorCandidatos extrator
+        -ClassificadorCompletude classificadorCompletude
+        -ClassificadorVeracidade classificadorVeracidade
+        -EscritorPredicoes escritor
+        +executar(pastaEntrada, pastaSaida) void
+        +processar(documento) List~Predicao~
+    }
+
+    class ExtratorCandidatos {
+        <<interface>>
+        +extrair(documento) List~CandidatoCitacao~
+    }
+
+    class AgenteExtrator {
+        -ModeloLinguagem modelo
+        +extrair(documento) List~CandidatoCitacao~
+    }
+
+    class ClassificadorCompletude {
+        <<interface>>
+        +classificar(candidato) ResultadoCompletude
+    }
+
+    class AgenteCompletude {
+        -ModeloLinguagem modelo
+        +classificar(candidato) ResultadoCompletude
+    }
+
+    class ResultadoCompletude {
+        +bool completa
+        +ConsultaCanonica consulta
+        +str justificativa
+        +float confianca
+    }
+
+    class ClassificadorVeracidade {
+        <<interface>>
+        +classificar(candidato) ResultadoVeracidade
+    }
+
+    class AgenteVeracidade {
+        -RepositorioCanonico repositorio
+        +classificar(candidato) ResultadoVeracidade
+        +buscar(consulta) List~RegistroCanonico~
+    }
+
+    class ResultadoVeracidade {
+        +Classificacao classificacao
+        +int idCanonico
+        +str justificativa
+        +float confianca
+    }
+
+    class Predicao {
+        +str documentoId
+        +int inicio
+        +int fim
+        +str trecho
+        +TipoCitacao tipo
+        +Classificacao classificacao
+        +int idCanonico
+        +float confianca
+    }
+
+    class Classificacao {
+        <<enumeration>>
+        REAL
+        INVENTADA
+        INCOMPLETA
+    }
+
+    Orquestrador --> ExtratorCandidatos
+    Orquestrador --> ClassificadorCompletude
+    Orquestrador --> ClassificadorVeracidade
+
+    ExtratorCandidatos <|.. AgenteExtrator
+    ClassificadorCompletude <|.. AgenteCompletude
+    ClassificadorVeracidade <|.. AgenteVeracidade
+
+    AgenteCompletude --> ResultadoCompletude : produz
+    AgenteVeracidade --> ResultadoVeracidade : produz
+    Orquestrador --> Predicao : produz
+
+    ResultadoVeracidade --> Classificacao
+    Predicao --> Classificacao

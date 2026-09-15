@@ -1,3 +1,0 @@
-1. Tamanho de disco 
-2. O DB também vai mudar na fase de eval?
-3. 

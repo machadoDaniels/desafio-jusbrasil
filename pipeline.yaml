@@ -1,0 +1,4 @@
+input_dir: desafio-jusbrasil-bracis-2026/txt
+workdir: outputs/run-001
+database: desafio-jusbrasil-bracis-2026/desafio1_bracis.db
+model: gpt-4.1-mini
