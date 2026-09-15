@@ -1,0 +1,19 @@
+erDiagram
+    DOCUMENTOS {
+        TEXT documento_id PK
+        INTEGER id UK
+        TEXT tribunal "nullable"
+        INTEGER ano "nullable"
+        TEXT relator "nullable"
+        TEXT natureza "acordao | sumula | dispositivo"
+        TEXT tipo "jurisprudencia | lei"
+        TEXT texto
+        INTEGER texto_len
+    }
+
+    DOCUMENTOS_FTS {
+        INTEGER rowid PK "documentos.rowid"
+        TEXT texto
+    }
+
+    DOCUMENTOS ||--|| DOCUMENTOS_FTS : "indice FTS5 (content_rowid = rowid)"

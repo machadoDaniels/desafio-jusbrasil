@@ -1,0 +1,14 @@
+flowchart LR                                                                                                                                                                                
+    A[Documento .txt original] --> B[1. Detector de candidatos]                                                                                                                             
+    B --> C[2. Normalizador]                                                                                                                                                                
+    C --> D[3. Resolver canônico]                                                                                                                                                           
+    D --> E[4. Política de decisão]                                                                                                                                                         
+    E --> F[5. Calibrador]                                                                                                                                                                  
+    F --> G[JSON por documento]                                                                                                                                                             
+    G --> H[Conversor oficial]                                                                                                                                                              
+    H --> I[submission.csv]                                                                                                                                                                 
+                                                                                                                                                                                            
+    J[(SQLite documentos + FTS5)] --> D                                                                                                                                                     
+    K[Goldenset + métrica oficial] --> L[Harness de avaliação]                                                                                                                              
+    I --> L                                                                                                                                                                                 
+    
