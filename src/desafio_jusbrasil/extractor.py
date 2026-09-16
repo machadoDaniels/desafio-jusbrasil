@@ -19,8 +19,8 @@ from .contracts import (
     ExtratorCandidatos,
     ExtratorCandidatosAsync,
     LoteCandidatosRequest,
-    ModelConfig,
     PipelineConfig,
+    StageConfig,
     escrever_manifesto_etapa,
 )
 
@@ -36,7 +36,7 @@ class AgenteExtrator:
     def __init__(
         self,
         cliente: OpenAI | AsyncOpenAI,
-        config: ModelConfig,
+        config: StageConfig,
     ) -> None:
         self._cliente = cliente
         self._config = config
@@ -147,7 +147,10 @@ class AgenteExtrator:
         texto: str,
         candidatos: list[CandidatoCitacaoRequest],
     ) -> list[CandidatoCitacao]:
-        return self._adicionar_spans(texto, candidatos)
+        processados = self._adicionar_spans(texto, candidatos)
+        if self._config.debug:
+            return processados
+        return [candidato for candidato in processados if candidato.inicio is not None]
 
     @staticmethod
     def _adicionar_spans(
