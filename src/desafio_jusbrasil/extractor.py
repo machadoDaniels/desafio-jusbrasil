@@ -26,7 +26,7 @@ from .contracts import (
 
 _SYSTEM_PROMPT = """Você extrai citações de documentos jurídicos brasileiros.
 Retorne todas as citações a jurisprudência, súmulas e dispositivos legais.
-Retorne somente o trecho literal, o tipo e, opcionalmente, a confiança.
+Retorne somente o trecho literal verbatim(não remova nada, nem marcadores e formatação), o tipo e, opcionalmente, a confiança.
 Classifique como jurisprudencia ou lei."""
 
 
@@ -147,8 +147,7 @@ class AgenteExtrator:
         texto: str,
         candidatos: list[CandidatoCitacaoRequest],
     ) -> list[CandidatoCitacao]:
-        candidatos_com_spans = self._adicionar_spans(texto, candidatos)
-        return self._remover_duplicatas(candidatos_com_spans)
+        return self._adicionar_spans(texto, candidatos)
 
     @staticmethod
     def _adicionar_spans(
@@ -156,44 +155,80 @@ class AgenteExtrator:
         candidatos: list[CandidatoCitacaoRequest],
     ) -> list[CandidatoCitacao]:
         encontrados = []
+        texto_normalizado, mapa = _normalizar_espacos_com_mapa(texto)
         for candidato in candidatos:
-            inicio = texto.find(candidato.trecho)
-            while inicio >= 0:
+            spans = _localizar_todas_ocorrencias(texto, candidato.trecho)
+            if not spans:
+                trecho_normalizado = _normalizar_espacos(candidato.trecho)
+                spans = _localizar_no_texto_normalizado(
+                    texto_normalizado,
+                    mapa,
+                    trecho_normalizado,
+                )
+            if not spans:
+                encontrados.append(CandidatoCitacao(**candidato.model_dump()))
+                continue
+            for inicio, fim in spans:
                 encontrados.append(
                     CandidatoCitacao(
-                        **candidato.model_dump(),
+                        **candidato.model_dump(exclude={"trecho"}),
+                        trecho=texto[inicio:fim],
                         inicio=inicio,
-                        fim=inicio + len(candidato.trecho),
+                        fim=fim,
                     )
                 )
-                inicio = texto.find(candidato.trecho, inicio + 1)
         return encontrados
 
-    @staticmethod
-    def _remover_duplicatas(
-        candidatos: list[CandidatoCitacao],
-    ) -> list[CandidatoCitacao]:
-        priorizados = sorted(
-            candidatos,
-            key=lambda candidato: (
-                -(candidato.confianca_extracao or 0.0),
-                candidato.inicio,
-                candidato.fim,
-            ),
-        )
-        unicos: list[CandidatoCitacao] = []
-        for candidato in priorizados:
-            if not any(_iou(candidato, existente) >= 0.5 for existente in unicos):
-                unicos.append(candidato)
-        return sorted(unicos, key=lambda candidato: (candidato.inicio, candidato.fim))
+
+def _localizar_todas_ocorrencias(texto: str, trecho: str) -> list[tuple[int, int]]:
+    spans = []
+    inicio = texto.find(trecho)
+    while inicio >= 0:
+        spans.append((inicio, inicio + len(trecho)))
+        inicio = texto.find(trecho, inicio + 1)
+    return spans
 
 
-def _iou(a: CandidatoCitacao, b: CandidatoCitacao) -> float:
-    intersecao = max(0, min(a.fim, b.fim) - max(a.inicio, b.inicio))
-    if intersecao == 0:
-        return 0.0
-    uniao = (a.fim - a.inicio) + (b.fim - b.inicio) - intersecao
-    return intersecao / uniao
+def _normalizar_espacos(texto: str) -> str:
+    return " ".join(texto.split())
+
+
+def _normalizar_espacos_com_mapa(
+    texto: str,
+) -> tuple[str, list[tuple[int, int]]]:
+    caracteres = []
+    mapa = []
+    indice = 0
+    while indice < len(texto):
+        if texto[indice].isspace():
+            inicio = indice
+            while indice < len(texto) and texto[indice].isspace():
+                indice += 1
+            caracteres.append(" ")
+            mapa.append((inicio, indice))
+        else:
+            caracteres.append(texto[indice])
+            mapa.append((indice, indice + 1))
+            indice += 1
+    return "".join(caracteres), mapa
+
+
+def _localizar_no_texto_normalizado(
+    texto_normalizado: str,
+    mapa: list[tuple[int, int]],
+    trecho_normalizado: str,
+) -> list[tuple[int, int]]:
+    if not trecho_normalizado:
+        return []
+    spans = []
+    inicio = texto_normalizado.find(trecho_normalizado)
+    while inicio >= 0:
+        fim_normalizado = inicio + len(trecho_normalizado)
+        inicio_original = mapa[inicio][0]
+        fim_original = mapa[fim_normalizado - 1][1]
+        spans.append((inicio_original, fim_original))
+        inicio = texto_normalizado.find(trecho_normalizado, inicio + 1)
+    return spans
 
 
 def _escrever_jsons(documentos: list[DocumentoExtraido], destino: Path) -> None:
@@ -201,7 +236,7 @@ def _escrever_jsons(documentos: list[DocumentoExtraido], destino: Path) -> None:
     for documento in documentos:
         caminho = destino / f"{documento.documento_id}.json"
         caminho.write_text(
-            documento.model_dump_json(indent=2, exclude_none=True) + "\n",
+            documento.model_dump_json(indent=2) + "\n",
             encoding="utf-8",
         )
 
