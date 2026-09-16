@@ -33,6 +33,8 @@ class PipelineConfig(Contract):
     database: Path
     model: str = "gpt-4.1-mini"
     base_url: str | None = None
+    temperature: float = Field(default=0, ge=0, le=2)
+    reasoning_effort: str | None = None
 
     @classmethod
     def from_yaml(cls, caminho: Path) -> PipelineConfig:
@@ -40,12 +42,19 @@ class PipelineConfig(Contract):
         return cls.model_validate(dados)
 
 
-class CandidatoCitacao(Contract):
-    tipo: TipoCitacao
+class CandidatoCitacaoRequest(Contract):
     trecho: str = Field(min_length=1)
+    tipo: TipoCitacao
+    confianca_extracao: float | None = Field(default=None, ge=0, le=1)
+
+
+class LoteCandidatosRequest(Contract):
+    candidatos: list[CandidatoCitacaoRequest]
+
+
+class CandidatoCitacao(CandidatoCitacaoRequest):
     inicio: int = Field(ge=0)
     fim: int = Field(gt=0)
-    confianca_extracao: float | None = Field(default=None, ge=0, le=1)
 
     @model_validator(mode="after")
     def validar_intervalo(self) -> CandidatoCitacao:
@@ -54,14 +63,10 @@ class CandidatoCitacao(Contract):
         return self
 
 
-class LoteCandidatos(Contract):
-    candidatos: list[CandidatoCitacao]
-
-
 class DocumentoExtraido(Contract):
     documento_id: str = Field(min_length=1)
-    texto: str
     candidatos: list[CandidatoCitacao]
+    texto: str
 
     @model_validator(mode="after")
     def validar_spans(self) -> DocumentoExtraido:
@@ -106,8 +111,8 @@ class CandidatoAnalisado(Contract):
 
 class DocumentoCompletude(Contract):
     documento_id: str = Field(min_length=1)
-    texto: str
     candidatos: list[CandidatoAnalisado]
+    texto: str
 
 
 class RegistroCanonico(Contract):
@@ -144,8 +149,8 @@ class CandidatoClassificado(Contract):
 
 class DocumentoClassificado(Contract):
     documento_id: str = Field(min_length=1)
-    texto: str
     candidatos: list[CandidatoClassificado]
+    texto: str
 
 
 class Resolucao(Contract):

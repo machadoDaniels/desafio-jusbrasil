@@ -228,7 +228,8 @@ def main() -> None:
     destino = config.workdir / "03-veracity.jsonl"
     modelo = ChatOpenAI(
         model=config.model,
-        temperature=0,
+        temperature=config.temperature,
+        reasoning_effort=config.reasoning_effort,
         base_url=config.base_url,
     )
     agente = AgenteVeracidade(modelo, config.database)

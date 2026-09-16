@@ -10,21 +10,21 @@ from dotenv import load_dotenv
 load_dotenv()
 
 from openai import OpenAI
-
 from tqdm import tqdm
 
 from .contracts import (
     CandidatoCitacao,
+    CandidatoCitacaoRequest,
     DocumentoExtraido,
     ExtratorCandidatos,
-    LoteCandidatos,
+    LoteCandidatosRequest,
     PipelineConfig,
 )
 
 _SYSTEM_PROMPT = """Você extrai citações de documentos jurídicos brasileiros.
 Retorne todas as citações a jurisprudência, súmulas e dispositivos legais.
-O trecho deve ser uma cópia literal e contínua do texto recebido.
-Use offsets Unicode com início inclusivo e fim exclusivo.
+Retorne somente o trecho literal, o tipo e, opcionalmente, a confiança.
+Não calcule nem retorne posições, índices, offsets, início ou fim.
 Não extraia números do processo do próprio cabeçalho, números de OAB,
 protocolos, valores monetários ou referências sem natureza jurídica.
 Classifique como jurisprudencia ou lei. Não avalie veracidade nesta etapa."""
@@ -33,18 +33,30 @@ Classifique como jurisprudencia ou lei. Não avalie veracidade nesta etapa."""
 class AgenteExtrator:
     """Extrai candidatos com saída estruturada e corrige seus spans localmente."""
 
-    def __init__(self, cliente: OpenAI, modelo: str) -> None:
+    def __init__(
+        self,
+        cliente: OpenAI,
+        modelo: str,
+        temperature: float = 0,
+        reasoning_effort: str | None = None,
+    ) -> None:
         self._cliente = cliente
         self._modelo = modelo
+        self._temperature = temperature
+        self._reasoning_effort = reasoning_effort
 
     def extrair(self, texto: str) -> list[CandidatoCitacao]:
         candidatos = self._consultar_modelo(texto)
-        candidatos = self._corrigir_spans(texto, candidatos)
-        return self._remover_duplicatas(candidatos)
+        candidatos_com_spans = self._adicionar_spans(texto, candidatos)
+        return self._remover_duplicatas(candidatos_com_spans)
 
-    def _consultar_modelo(self, texto: str) -> list[CandidatoCitacao]:
+    def _consultar_modelo(self, texto: str) -> list[CandidatoCitacaoRequest]:
+        parametros = {}
+        if self._reasoning_effort is not None:
+            parametros["reasoning_effort"] = self._reasoning_effort
         resposta = self._cliente.chat.completions.parse(
             model=self._modelo,
+            temperature=self._temperature,
             messages=[
                 {"role": "system", "content": _SYSTEM_PROMPT},
                 {
@@ -52,46 +64,32 @@ class AgenteExtrator:
                     "content": f"Extraia as citações deste documento:\n\n{texto}",
                 },
             ],
-            response_format=LoteCandidatos,
+            response_format=LoteCandidatosRequest,
+            **parametros,
         )
         resultado = resposta.choices[0].message.parsed
         if resultado is None:
             raise RuntimeError("o modelo não retornou uma extração estruturada")
         return resultado.candidatos
 
-    def _corrigir_spans(
-        self,
+    @staticmethod
+    def _adicionar_spans(
         texto: str,
-        candidatos: list[CandidatoCitacao],
+        candidatos: list[CandidatoCitacaoRequest],
     ) -> list[CandidatoCitacao]:
-        corrigidos = []
+        encontrados = []
         for candidato in candidatos:
-            if texto[candidato.inicio : candidato.fim] == candidato.trecho:
-                corrigidos.append(candidato)
-                continue
-            span = self._localizar_trecho(texto, candidato.trecho, candidato.inicio)
-            if span is not None:
-                corrigidos.append(
-                    candidato.model_copy(update={"inicio": span[0], "fim": span[1]})
+            inicio = texto.find(candidato.trecho)
+            while inicio >= 0:
+                encontrados.append(
+                    CandidatoCitacao(
+                        **candidato.model_dump(),
+                        inicio=inicio,
+                        fim=inicio + len(candidato.trecho),
+                    )
                 )
-        return corrigidos
-
-    def _localizar_trecho(
-        self,
-        texto: str,
-        trecho: str,
-        posicao_aproximada: int | None,
-    ) -> tuple[int, int] | None:
-        posicoes: list[int] = []
-        inicio = texto.find(trecho)
-        while inicio >= 0:
-            posicoes.append(inicio)
-            inicio = texto.find(trecho, inicio + 1)
-        if not posicoes:
-            return None
-        referencia = posicao_aproximada or 0
-        melhor = min(posicoes, key=lambda posicao: abs(posicao - referencia))
-        return melhor, melhor + len(trecho)
+                inicio = texto.find(candidato.trecho, inicio + 1)
+        return encontrados
 
     def _remover_duplicatas(
         self,
@@ -146,7 +144,7 @@ def executar_extracao(
         documentos.append(
             DocumentoExtraido(
                 documento_id=arquivo.stem,
-                # texto=texto,
+                texto=texto,
                 candidatos=extrator.extrair(texto),
             )
         )
@@ -159,7 +157,12 @@ def main() -> None:
     executar_extracao(
         config.input_dir,
         destino,
-        AgenteExtrator(OpenAI(base_url=config.base_url), config.model),
+        AgenteExtrator(
+            OpenAI(base_url=config.base_url),
+            config.model,
+            config.temperature,
+            config.reasoning_effort,
+        ),
     )
     print(f"{destino}: extração concluída")
 

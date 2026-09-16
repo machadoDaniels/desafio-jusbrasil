@@ -27,9 +27,17 @@ suficiente, é incompleta. Se completa=false, consulta deve ser null."""
 class AgenteCompletude:
     """Classifica completude por uma chamada estruturada ao modelo."""
 
-    def __init__(self, cliente: OpenAI, modelo: str) -> None:
+    def __init__(
+        self,
+        cliente: OpenAI,
+        modelo: str,
+        temperature: float = 0,
+        reasoning_effort: str | None = None,
+    ) -> None:
         self._cliente = cliente
         self._modelo = modelo
+        self._temperature = temperature
+        self._reasoning_effort = reasoning_effort
 
     def classificar(
         self,
@@ -43,8 +51,12 @@ class AgenteCompletude:
         candidato: CandidatoCitacao,
         contexto: str,
     ) -> ResultadoCompletude:
+        parametros = {}
+        if self._reasoning_effort is not None:
+            parametros["reasoning_effort"] = self._reasoning_effort
         resposta = self._cliente.chat.completions.parse(
             model=self._modelo,
+            temperature=self._temperature,
             messages=[
                 {"role": "system", "content": _SYSTEM_PROMPT},
                 {
@@ -57,6 +69,7 @@ class AgenteCompletude:
                 },
             ],
             response_format=ResultadoCompletude,
+            **parametros,
         )
         resultado = resposta.choices[0].message.parsed
         if resultado is None:
@@ -131,7 +144,12 @@ def main() -> None:
     executar_completude(
         entrada,
         destino,
-        AgenteCompletude(OpenAI(base_url=config.base_url), config.model),
+        AgenteCompletude(
+            OpenAI(base_url=config.base_url),
+            config.model,
+            config.temperature,
+            config.reasoning_effort,
+        ),
     )
     print(f"{destino}: completude concluída")
 

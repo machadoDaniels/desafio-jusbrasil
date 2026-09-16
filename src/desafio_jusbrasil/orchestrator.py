@@ -94,12 +94,23 @@ def main() -> None:
     cliente_openai = OpenAI(base_url=config.base_url)
     modelo_langchain = ChatOpenAI(
         model=config.model,
-        temperature=0,
+        temperature=config.temperature,
+        reasoning_effort=config.reasoning_effort,
         base_url=config.base_url,
     )
     orquestrador = Orquestrador(
-        extrator=AgenteExtrator(cliente_openai, config.model),
-        completude=AgenteCompletude(cliente_openai, config.model),
+        extrator=AgenteExtrator(
+            cliente_openai,
+            config.model,
+            config.temperature,
+            config.reasoning_effort,
+        ),
+        completude=AgenteCompletude(
+            cliente_openai,
+            config.model,
+            config.temperature,
+            config.reasoning_effort,
+        ),
         veracidade=AgenteVeracidade(modelo_langchain, config.database),
     )
     orquestrador.executar(config.input_dir, config.workdir)
