@@ -3,15 +3,19 @@
 from __future__ import annotations
 
 import json
+import os
 import re
 import sqlite3
 from pathlib import Path
 from tempfile import NamedTemporaryFile
 
+from dotenv import load_dotenv
 from langchain.agents import create_agent
 from langchain_core.language_models.chat_models import BaseChatModel
 from langchain_core.tools import StructuredTool
+from langchain_google_genai import ChatGoogleGenerativeAI
 from langchain_openai import ChatOpenAI
+from tqdm import tqdm
 
 from .contracts import (
     CandidatoClassificado,
@@ -26,6 +30,8 @@ from .contracts import (
     TipoCitacao,
 )
 
+load_dotenv()
+
 _SYSTEM_PROMPT = """Você verifica citações jurídicas contra uma base canônica fechada.
 Sempre chame a ferramenta buscar_base_canonica antes de responder.
 Classifique como real somente quando exatamente um registro retornado corresponder
@@ -34,6 +40,22 @@ corresponder, classifique como inventada. Se faltarem dados ou houver ambiguidad
 entre registros, classifique como incompleta. Nunca invente um id_canonico.
 A justificativa deve ser curta e baseada no resultado da ferramenta.
 Nesta primeira versão, retorne null em confianca."""
+
+
+def criar_modelo_veracidade(config: PipelineConfig) -> BaseChatModel:
+    if config.provider == "gemini":
+        return ChatGoogleGenerativeAI(
+            model=config.model,
+            api_key=os.environ["OPENAI_API_KEY"],
+            temperature=config.temperature,
+            thinking_level=config.reasoning_effort,
+        )
+    return ChatOpenAI(
+        model=config.model,
+        temperature=config.temperature,
+        reasoning_effort=config.reasoning_effort,
+        base_url=config.base_url,
+    )
 
 
 class AgenteVeracidade:
@@ -193,32 +215,38 @@ def executar_veracidade(
     output_file: Path,
     classificador: ClassificadorVeracidade,
 ) -> None:
+    documentos = _ler_jsonl(input_file)
+    total = sum(len(documento.candidatos) for documento in documentos)
     saida = []
-    for documento in _ler_jsonl(input_file):
-        candidatos = []
-        for analisado in documento.candidatos:
-            if analisado.completude.completa:
-                assert analisado.completude.consulta is not None
-                resultado = classificador.classificar(analisado.completude.consulta)
-            else:
-                resultado = ResultadoVeracidade(
-                    classificacao=Classificacao.INCOMPLETA,
-                    justificativa=analisado.completude.justificativa,
+    with tqdm(total=total, desc="Verificando citações") as progresso:
+        for documento in documentos:
+            candidatos = []
+            for analisado in documento.candidatos:
+                if analisado.completude.completa:
+                    assert analisado.completude.consulta is not None
+                    resultado = classificador.classificar(
+                        analisado.completude.consulta
+                    )
+                else:
+                    resultado = ResultadoVeracidade(
+                        classificacao=Classificacao.INCOMPLETA,
+                        justificativa=analisado.completude.justificativa,
+                    )
+                candidatos.append(
+                    CandidatoClassificado(
+                        candidato=analisado.candidato,
+                        completude=analisado.completude,
+                        veracidade=resultado,
+                    )
                 )
-            candidatos.append(
-                CandidatoClassificado(
-                    candidato=analisado.candidato,
-                    completude=analisado.completude,
-                    veracidade=resultado,
+                progresso.update()
+            saida.append(
+                DocumentoClassificado(
+                    documento_id=documento.documento_id,
+                    texto=documento.texto,
+                    candidatos=candidatos,
                 )
             )
-        saida.append(
-            DocumentoClassificado(
-                documento_id=documento.documento_id,
-                texto=documento.texto,
-                candidatos=candidatos,
-            )
-        )
     _escrever_jsonl(saida, output_file)
 
 
@@ -226,13 +254,7 @@ def main() -> None:
     config = PipelineConfig.from_yaml(Path("pipeline.yaml"))
     entrada = config.workdir / "02-completeness.jsonl"
     destino = config.workdir / "03-veracity.jsonl"
-    modelo = ChatOpenAI(
-        model=config.model,
-        temperature=config.temperature,
-        reasoning_effort=config.reasoning_effort,
-        base_url=config.base_url,
-    )
-    agente = AgenteVeracidade(modelo, config.database)
+    agente = AgenteVeracidade(criar_modelo_veracidade(config), config.database)
     executar_veracidade(entrada, destino, agente)
     print(f"{destino}: veracidade concluída")
 

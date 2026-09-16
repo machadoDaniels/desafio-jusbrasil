@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 from pathlib import Path
 from tempfile import NamedTemporaryFile
 
@@ -9,7 +10,7 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
-from openai import OpenAI
+from openai import AsyncOpenAI, OpenAI
 from tqdm import tqdm
 
 from .contracts import (
@@ -17,6 +18,7 @@ from .contracts import (
     CandidatoCitacaoRequest,
     DocumentoExtraido,
     ExtratorCandidatos,
+    ExtratorCandidatosAsync,
     LoteCandidatosRequest,
     PipelineConfig,
 )
@@ -35,7 +37,7 @@ class AgenteExtrator:
 
     def __init__(
         self,
-        cliente: OpenAI,
+        cliente: OpenAI | AsyncOpenAI,
         modelo: str,
         temperature: float = 0,
         reasoning_effort: str | None = None,
@@ -46,31 +48,72 @@ class AgenteExtrator:
         self._reasoning_effort = reasoning_effort
 
     def extrair(self, texto: str) -> list[CandidatoCitacao]:
+        if not isinstance(self._cliente, OpenAI):
+            raise TypeError("extrair() exige um cliente OpenAI síncrono")
         candidatos = self._consultar_modelo(texto)
-        candidatos_com_spans = self._adicionar_spans(texto, candidatos)
-        return self._remover_duplicatas(candidatos_com_spans)
+        return self._processar_candidatos(texto, candidatos)
 
-    def _consultar_modelo(self, texto: str) -> list[CandidatoCitacaoRequest]:
+    async def extrair_async(self, texto: str) -> list[CandidatoCitacao]:
+        if not isinstance(self._cliente, AsyncOpenAI):
+            raise TypeError("extrair_async() exige um cliente AsyncOpenAI")
+        candidatos = await self._consultar_modelo_async(texto)
+        return self._processar_candidatos(texto, candidatos)
+
+    def _parametros(self) -> dict[str, str]:
         parametros = {}
         if self._reasoning_effort is not None:
             parametros["reasoning_effort"] = self._reasoning_effort
+        return parametros
+
+    def _mensagens(self, texto: str) -> list[dict[str, str]]:
+        return [
+            {"role": "system", "content": _SYSTEM_PROMPT},
+            {
+                "role": "user",
+                "content": f"Extraia as citações deste documento:\n\n{texto}",
+            },
+        ]
+
+    def _consultar_modelo(self, texto: str) -> list[CandidatoCitacaoRequest]:
+        assert isinstance(self._cliente, OpenAI)
         resposta = self._cliente.chat.completions.parse(
             model=self._modelo,
             temperature=self._temperature,
-            messages=[
-                {"role": "system", "content": _SYSTEM_PROMPT},
-                {
-                    "role": "user",
-                    "content": f"Extraia as citações deste documento:\n\n{texto}",
-                },
-            ],
+            messages=self._mensagens(texto),
             response_format=LoteCandidatosRequest,
-            **parametros,
+            **self._parametros(),
         )
-        resultado = resposta.choices[0].message.parsed
+        return self._obter_candidatos(resposta.choices[0].message.parsed)
+
+    async def _consultar_modelo_async(
+        self,
+        texto: str,
+    ) -> list[CandidatoCitacaoRequest]:
+        assert isinstance(self._cliente, AsyncOpenAI)
+        resposta = await self._cliente.chat.completions.parse(
+            model=self._modelo,
+            temperature=self._temperature,
+            messages=self._mensagens(texto),
+            response_format=LoteCandidatosRequest,
+            **self._parametros(),
+        )
+        return self._obter_candidatos(resposta.choices[0].message.parsed)
+
+    @staticmethod
+    def _obter_candidatos(
+        resultado: LoteCandidatosRequest | None,
+    ) -> list[CandidatoCitacaoRequest]:
         if resultado is None:
             raise RuntimeError("o modelo não retornou uma extração estruturada")
         return resultado.candidatos
+
+    def _processar_candidatos(
+        self,
+        texto: str,
+        candidatos: list[CandidatoCitacaoRequest],
+    ) -> list[CandidatoCitacao]:
+        candidatos_com_spans = self._adicionar_spans(texto, candidatos)
+        return self._remover_duplicatas(candidatos_com_spans)
 
     @staticmethod
     def _adicionar_spans(
@@ -91,8 +134,8 @@ class AgenteExtrator:
                 inicio = texto.find(candidato.trecho, inicio + 1)
         return encontrados
 
+    @staticmethod
     def _remover_duplicatas(
-        self,
         candidatos: list[CandidatoCitacao],
     ) -> list[CandidatoCitacao]:
         priorizados = sorted(
@@ -151,19 +194,68 @@ def executar_extracao(
     _escrever_jsonl(documentos, output_file)
 
 
+async def executar_extracao_async(
+    input_dir: Path,
+    output_file: Path,
+    extrator: ExtratorCandidatosAsync,
+    max_concurrency: int,
+) -> None:
+    arquivos = sorted(input_dir.glob("*.txt"))
+    if not arquivos:
+        raise ValueError(f"nenhum arquivo .txt encontrado em {input_dir}")
+
+    semaforo = asyncio.Semaphore(max_concurrency)
+    progresso = tqdm(total=len(arquivos), desc="Extraindo candidatos")
+
+    async def processar(arquivo: Path) -> DocumentoExtraido:
+        async with semaforo:
+            texto = arquivo.read_text(encoding="utf-8")
+            candidatos = await extrator.extrair_async(texto)
+        progresso.update()
+        return DocumentoExtraido(
+            documento_id=arquivo.stem,
+            texto=texto,
+            candidatos=candidatos,
+        )
+
+    try:
+        documentos = await asyncio.gather(*(processar(arquivo) for arquivo in arquivos))
+    finally:
+        progresso.close()
+    _escrever_jsonl(documentos, output_file)
+
+
+async def _executar_extracao_async(config: PipelineConfig, destino: Path) -> None:
+    async with AsyncOpenAI(base_url=config.extractor.base_url) as cliente:
+        await executar_extracao_async(
+            config.input_dir,
+            destino,
+            AgenteExtrator(
+                cliente,
+                config.extractor.model,
+                config.extractor.temperature,
+                config.extractor.reasoning_effort,
+            ),
+            config.extractor.max_concurrency,
+        )
+
+
 def main() -> None:
     config = PipelineConfig.from_yaml(Path("pipeline.yaml"))
     destino = config.workdir / "01-extraction.jsonl"
-    executar_extracao(
-        config.input_dir,
-        destino,
-        AgenteExtrator(
-            OpenAI(base_url=config.base_url),
-            config.model,
-            config.temperature,
-            config.reasoning_effort,
-        ),
-    )
+    if config.extractor.async_requests:
+        asyncio.run(_executar_extracao_async(config, destino))
+    else:
+        executar_extracao(
+            config.input_dir,
+            destino,
+            AgenteExtrator(
+                OpenAI(base_url=config.extractor.base_url),
+                config.extractor.model,
+                config.extractor.temperature,
+                config.extractor.reasoning_effort,
+            ),
+        )
     print(f"{destino}: extração concluída")
 
 
