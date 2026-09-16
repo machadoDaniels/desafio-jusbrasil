@@ -635,12 +635,38 @@ predictions/*.json
 
 `veracity.materializar()` permite recriar os JSONs finais diretamente de `03-veracity/`, sem repetir as etapas anteriores.
 
-## Conversão para submissão
+## Conversão e avaliação local
+
+```bash
+uv run scripts/evaluate.py
+```
+
+O script lê `outputs/run-001/submission.csv`, agrega o `goldenset.csv` e executa a métrica oficial. Também aceita outro CSV explicitamente:
+
+```bash
+uv run scripts/evaluate.py outputs/oracle-submission.csv
+```
+
+A conversão dos JSONs continua separada:
 
 ```bash
 uv run python desafio-jusbrasil-bracis-2026/json_to_submission.py \
   outputs/run-001/predictions \
   outputs/run-001/submission.csv
+```
+
+Os checkpoints gold são regenerados do `goldenset_offsets.csv` com:
+
+```bash
+uv run scripts/generate_stage_golds.py
+```
+
+Cada checkpoint também possui um avaliador independente:
+
+```bash
+uv run scripts/evaluate_extraction.py
+uv run scripts/evaluate_completeness.py
+uv run scripts/evaluate_veracity.py
 ```
 
 ---
