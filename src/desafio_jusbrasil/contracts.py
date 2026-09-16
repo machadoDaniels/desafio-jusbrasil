@@ -27,14 +27,34 @@ class Classificacao(StrEnum):
     INCOMPLETA = "incompleta"
 
 
+class ModelConfig(Contract):
+    provider: str = "openai"
+    model: str
+    base_url: str | None = None
+    temperature: float = Field(default=0, ge=0, le=2)
+    reasoning_effort: str | None = None
+
+    @model_validator(mode="after")
+    def validar_provider(self) -> ModelConfig:
+        if self.provider not in {"openai", "gemini"}:
+            raise ValueError("provider deve ser openai ou gemini")
+        if self.provider == "gemini" and self.reasoning_effort == "none":
+            raise ValueError("Gemini não aceita reasoning_effort=none; use low")
+        return self
+
+
+class ExtractorConfig(ModelConfig):
+    async_requests: bool = False
+    max_concurrency: int = Field(default=4, ge=1)
+
+
 class PipelineConfig(Contract):
     input_dir: Path
     workdir: Path
     database: Path
-    model: str = "gpt-4.1-mini"
-    base_url: str | None = None
-    temperature: float = Field(default=0, ge=0, le=2)
-    reasoning_effort: str | None = None
+    extractor: ExtractorConfig
+    completeness: ModelConfig
+    veracity: ModelConfig
 
     @classmethod
     def from_yaml(cls, caminho: Path) -> PipelineConfig:
@@ -184,6 +204,10 @@ class DocumentoPredito(Contract):
 
 class ExtratorCandidatos(Protocol):
     def extrair(self, texto: str) -> list[CandidatoCitacao]: ...
+
+
+class ExtratorCandidatosAsync(Protocol):
+    async def extrair_async(self, texto: str) -> list[CandidatoCitacao]: ...
 
 
 class ClassificadorCompletude(Protocol):

@@ -5,7 +5,6 @@ from __future__ import annotations
 from collections.abc import Iterator
 from pathlib import Path
 
-from langchain_openai import ChatOpenAI
 from openai import OpenAI
 
 from .completeness import AgenteCompletude, executar_completude
@@ -21,7 +20,11 @@ from .contracts import (
     Resolucao,
 )
 from .extractor import AgenteExtrator, executar_extracao
-from .veracity import AgenteVeracidade, executar_veracidade
+from .veracity import (
+    AgenteVeracidade,
+    criar_modelo_veracidade,
+    executar_veracidade,
+)
 
 
 class Orquestrador:
@@ -92,26 +95,23 @@ class Orquestrador:
 def main() -> None:
     config = PipelineConfig.from_yaml(Path("pipeline.yaml"))
     cliente_openai = OpenAI(base_url=config.base_url)
-    modelo_langchain = ChatOpenAI(
-        model=config.model,
-        temperature=config.temperature,
-        reasoning_effort=config.reasoning_effort,
-        base_url=config.base_url,
-    )
     orquestrador = Orquestrador(
-        extrator=AgenteExtrator(
+        AgenteExtrator(
             cliente_openai,
             config.model,
             config.temperature,
             config.reasoning_effort,
         ),
-        completude=AgenteCompletude(
+        AgenteCompletude(
             cliente_openai,
             config.model,
             config.temperature,
             config.reasoning_effort,
         ),
-        veracidade=AgenteVeracidade(modelo_langchain, config.database),
+        AgenteVeracidade(
+            criar_modelo_veracidade(config),
+            config.database,
+        ),
     )
     orquestrador.executar(config.input_dir, config.workdir)
     print(f"{config.workdir}: pipeline concluído")

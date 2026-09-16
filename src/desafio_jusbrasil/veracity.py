@@ -24,6 +24,7 @@ from .contracts import (
     ConsultaCanonica,
     DocumentoClassificado,
     DocumentoCompletude,
+    ModelConfig,
     PipelineConfig,
     RegistroCanonico,
     ResultadoVeracidade,
@@ -42,7 +43,7 @@ A justificativa deve ser curta e baseada no resultado da ferramenta.
 Nesta primeira versão, retorne null em confianca."""
 
 
-def criar_modelo_veracidade(config: PipelineConfig) -> BaseChatModel:
+def criar_modelo_veracidade(config: ModelConfig) -> BaseChatModel:
     if config.provider == "gemini":
         return ChatGoogleGenerativeAI(
             model=config.model,
@@ -254,7 +255,10 @@ def main() -> None:
     config = PipelineConfig.from_yaml(Path("pipeline.yaml"))
     entrada = config.workdir / "02-completeness.jsonl"
     destino = config.workdir / "03-veracity.jsonl"
-    agente = AgenteVeracidade(criar_modelo_veracidade(config), config.database)
+    agente = AgenteVeracidade(
+        criar_modelo_veracidade(config.veracity),
+        config.database,
+    )
     executar_veracidade(entrada, destino, agente)
     print(f"{destino}: veracidade concluída")
 

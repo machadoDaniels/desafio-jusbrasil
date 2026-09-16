@@ -5,7 +5,9 @@ from __future__ import annotations
 from pathlib import Path
 from tempfile import NamedTemporaryFile
 
+from dotenv import load_dotenv
 from openai import OpenAI
+from tqdm import tqdm
 
 from .contracts import (
     CandidatoAnalisado,
@@ -16,6 +18,8 @@ from .contracts import (
     PipelineConfig,
     ResultadoCompletude,
 )
+
+load_dotenv()
 
 _SYSTEM_PROMPT = """Você avalia citações jurídicas brasileiras.
 Decida se o trecho e seu contexto fornecem informação suficiente para formular
@@ -115,25 +119,30 @@ def executar_completude(
     output_file: Path,
     classificador: ClassificadorCompletude,
 ) -> None:
+    documentos = _ler_jsonl(input_file)
+    total = sum(len(documento.candidatos) for documento in documentos)
     saida = []
-    for documento in _ler_jsonl(input_file):
-        candidatos = [
-            CandidatoAnalisado(
-                candidato=candidato,
-                completude=classificador.classificar(
-                    candidato,
-                    _obter_contexto(documento.texto, candidato),
-                ),
+    with tqdm(total=total, desc="Avaliando completude") as progresso:
+        for documento in documentos:
+            candidatos = []
+            for candidato in documento.candidatos:
+                candidatos.append(
+                    CandidatoAnalisado(
+                        candidato=candidato,
+                        completude=classificador.classificar(
+                            candidato,
+                            _obter_contexto(documento.texto, candidato),
+                        ),
+                    )
+                )
+                progresso.update()
+            saida.append(
+                DocumentoCompletude(
+                    documento_id=documento.documento_id,
+                    texto=documento.texto,
+                    candidatos=candidatos,
+                )
             )
-            for candidato in documento.candidatos
-        ]
-        saida.append(
-            DocumentoCompletude(
-                documento_id=documento.documento_id,
-                texto=documento.texto,
-                candidatos=candidatos,
-            )
-        )
     _escrever_jsonl(saida, output_file)
 
 
