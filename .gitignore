@@ -3,3 +3,5 @@ desafio-jusbrasil-bracis-2026.zip
 .env
 .DS_Store
 outputs/
+
+**.pyc

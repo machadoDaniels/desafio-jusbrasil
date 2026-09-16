@@ -2,12 +2,12 @@
 
 from __future__ import annotations
 
+import asyncio
 import json
 import os
 import re
 import sqlite3
 from pathlib import Path
-from tempfile import NamedTemporaryFile
 
 from dotenv import load_dotenv
 from langchain.agents import create_agent
@@ -18,20 +18,23 @@ from langchain_openai import ChatOpenAI
 from tqdm import tqdm
 
 from .contracts import (
+    CandidatoAnalisado,
     CandidatoClassificado,
     Classificacao,
     ClassificadorVeracidade,
+    ClassificadorVeracidadeAsync,
     ConsultaCanonica,
     DocumentoClassificado,
     DocumentoCompletude,
+    DocumentoPredito,
     ModelConfig,
     PipelineConfig,
+    Predicao,
     RegistroCanonico,
+    Resolucao,
     ResultadoVeracidade,
     TipoCitacao,
 )
-
-load_dotenv()
 
 _SYSTEM_PROMPT = """Você verifica citações jurídicas contra uma base canônica fechada.
 Sempre chame a ferramenta buscar_base_canonica antes de responder.
@@ -81,19 +84,32 @@ class AgenteVeracidade:
         )
 
     def classificar(self, consulta: ConsultaCanonica) -> ResultadoVeracidade:
-        resposta = self._agent.invoke(
-            {
-                "messages": [
-                    {
-                        "role": "user",
-                        "content": (
-                            "Verifique esta consulta canônica:\n"
-                            + consulta.model_dump_json(exclude_none=True)
-                        ),
-                    }
-                ]
-            }
-        )
+        resposta = self._agent.invoke(self._entrada(consulta))
+        return self._obter_resultado(resposta)
+
+    async def classificar_async(
+        self,
+        consulta: ConsultaCanonica,
+    ) -> ResultadoVeracidade:
+        resposta = await self._agent.ainvoke(self._entrada(consulta))
+        return self._obter_resultado(resposta)
+
+    @staticmethod
+    def _entrada(consulta: ConsultaCanonica) -> dict:
+        return {
+            "messages": [
+                {
+                    "role": "user",
+                    "content": (
+                        "Verifique esta consulta canônica:\n"
+                        + consulta.model_dump_json(exclude_none=True)
+                    ),
+                }
+            ]
+        }
+
+    @staticmethod
+    def _obter_resultado(resposta: dict) -> ResultadoVeracidade:
         if not any(
             getattr(mensagem, "type", None) == "tool"
             for mensagem in resposta.get("messages", [])
@@ -188,27 +204,31 @@ class AgenteVeracidade:
         ]
 
 
-def _ler_jsonl(caminho: Path) -> list[DocumentoCompletude]:
+def _ler_jsons(caminho: Path) -> list[DocumentoCompletude]:
+    arquivos = sorted(caminho.glob("*.json"))
+    if not arquivos:
+        raise ValueError(f"nenhum arquivo JSON encontrado em {caminho}")
     documentos = []
-    with caminho.open(encoding="utf-8") as arquivo:
-        for numero, linha in enumerate(arquivo, start=1):
-            if linha.strip():
-                try:
-                    documentos.append(DocumentoCompletude.model_validate_json(linha))
-                except ValueError as erro:
-                    raise ValueError(f"{caminho}:{numero}: {erro}") from erro
+    for arquivo in arquivos:
+        try:
+            documentos.append(
+                DocumentoCompletude.model_validate_json(
+                    arquivo.read_text(encoding="utf-8")
+                )
+            )
+        except ValueError as erro:
+            raise ValueError(f"{arquivo}: {erro}") from erro
     return documentos
 
 
-def _escrever_jsonl(documentos: list[DocumentoClassificado], destino: Path) -> None:
-    destino.parent.mkdir(parents=True, exist_ok=True)
-    with NamedTemporaryFile(
-        "w", encoding="utf-8", dir=destino.parent, delete=False
-    ) as temporario:
-        caminho_temporario = Path(temporario.name)
-        for documento in documentos:
-            temporario.write(documento.model_dump_json(exclude_none=True) + "\n")
-    caminho_temporario.replace(destino)
+def _escrever_jsons(documentos: list[DocumentoClassificado], destino: Path) -> None:
+    destino.mkdir(parents=True, exist_ok=True)
+    for documento in documentos:
+        caminho = destino / f"{documento.documento_id}.json"
+        caminho.write_text(
+            documento.model_dump_json(indent=2, exclude_none=True) + "\n",
+            encoding="utf-8",
+        )
 
 
 def executar_veracidade(
@@ -216,7 +236,7 @@ def executar_veracidade(
     output_file: Path,
     classificador: ClassificadorVeracidade,
 ) -> None:
-    documentos = _ler_jsonl(input_file)
+    documentos = _ler_jsons(input_file)
     total = sum(len(documento.candidatos) for documento in documentos)
     saida = []
     with tqdm(total=total, desc="Verificando citações") as progresso:
@@ -225,9 +245,7 @@ def executar_veracidade(
             for analisado in documento.candidatos:
                 if analisado.completude.completa:
                     assert analisado.completude.consulta is not None
-                    resultado = classificador.classificar(
-                        analisado.completude.consulta
-                    )
+                    resultado = classificador.classificar(analisado.completude.consulta)
                 else:
                     resultado = ResultadoVeracidade(
                         classificacao=Classificacao.INCOMPLETA,
@@ -248,19 +266,121 @@ def executar_veracidade(
                     candidatos=candidatos,
                 )
             )
-    _escrever_jsonl(saida, output_file)
+    _escrever_jsons(saida, output_file)
+
+
+async def executar_veracidade_async(
+    input_file: Path,
+    output_file: Path,
+    classificador: ClassificadorVeracidadeAsync,
+    max_concurrency: int,
+) -> None:
+    documentos = _ler_jsons(input_file)
+    total = sum(len(documento.candidatos) for documento in documentos)
+    semaforo = asyncio.Semaphore(max_concurrency)
+    progresso = tqdm(total=total, desc="Verificando citações")
+
+    async def processar(documento: DocumentoCompletude) -> DocumentoClassificado:
+        async def classificar(
+            analisado: CandidatoAnalisado,
+        ) -> CandidatoClassificado:
+            if analisado.completude.completa:
+                assert analisado.completude.consulta is not None
+                async with semaforo:
+                    resultado = await classificador.classificar_async(
+                        analisado.completude.consulta
+                    )
+            else:
+                resultado = ResultadoVeracidade(
+                    classificacao=Classificacao.INCOMPLETA,
+                    justificativa=analisado.completude.justificativa,
+                )
+            progresso.update()
+            return CandidatoClassificado(
+                candidato=analisado.candidato,
+                completude=analisado.completude,
+                veracidade=resultado,
+            )
+
+        candidatos = await asyncio.gather(
+            *(classificar(analisado) for analisado in documento.candidatos)
+        )
+        return DocumentoClassificado(
+            documento_id=documento.documento_id,
+            texto=documento.texto,
+            candidatos=candidatos,
+        )
+
+    try:
+        saida = await asyncio.gather(
+            *(processar(documento) for documento in documentos)
+        )
+    finally:
+        progresso.close()
+    _escrever_jsons(saida, output_file)
+
+
+def materializar(entrada: Path, pasta_saida: Path) -> None:
+    arquivos = sorted(entrada.glob("*.json"))
+    if not arquivos:
+        raise ValueError(f"nenhum arquivo JSON encontrado em {entrada}")
+    pasta_saida.mkdir(parents=True, exist_ok=True)
+    for arquivo in tqdm(arquivos, desc="Materializando predições"):
+        documento = DocumentoClassificado.model_validate_json(
+            arquivo.read_text(encoding="utf-8")
+        )
+        citacoes = []
+        for item in documento.candidatos:
+            resultado = item.veracidade
+            resolucao = None
+            if resultado.classificacao == Classificacao.REAL:
+                assert resultado.id_canonico is not None
+                resolucao = Resolucao(id_canonico=resultado.id_canonico)
+            citacoes.append(
+                Predicao(
+                    inicio=item.candidato.inicio,
+                    fim=item.candidato.fim,
+                    trecho=item.candidato.trecho,
+                    tipo=item.candidato.tipo,
+                    classificacao=resultado.classificacao,
+                    resolucao=resolucao,
+                    confianca=resultado.confianca,
+                )
+            )
+        predicao = DocumentoPredito(
+            documento_id=documento.documento_id,
+            citacoes=citacoes,
+        )
+        (pasta_saida / arquivo.name).write_text(
+            predicao.model_dump_json(indent=2, exclude_none=True) + "\n",
+            encoding="utf-8",
+        )
 
 
 def main() -> None:
+    load_dotenv()
     config = PipelineConfig.from_yaml(Path("pipeline.yaml"))
-    entrada = config.workdir / "02-completeness.jsonl"
-    destino = config.workdir / "03-veracity.jsonl"
+    entrada = config.workdir / "02-completeness"
+    destino = config.workdir / "03-veracity"
+    etapa = config.veracity
     agente = AgenteVeracidade(
-        criar_modelo_veracidade(config.veracity),
+        criar_modelo_veracidade(etapa),
         config.database,
     )
-    executar_veracidade(entrada, destino, agente)
+    if etapa.async_requests:
+        asyncio.run(
+            executar_veracidade_async(
+                entrada,
+                destino,
+                agente,
+                etapa.max_concurrency,
+            )
+        )
+    else:
+        executar_veracidade(entrada, destino, agente)
     print(f"{destino}: veracidade concluída")
+
+    materializar(destino, config.workdir / "predictions")
 
 
 if __name__ == "__main__":

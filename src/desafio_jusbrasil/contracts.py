@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from enum import StrEnum
 from pathlib import Path
-from typing import Protocol
+from typing import Literal, Protocol
 
 import yaml
 from pydantic import BaseModel, ConfigDict, Field, model_validator
@@ -27,23 +27,30 @@ class Classificacao(StrEnum):
     INCOMPLETA = "incompleta"
 
 
+ReasoningEffort = Literal["none", "minimal", "low", "medium", "high", "xhigh", "max"]
+
+
 class ModelConfig(Contract):
-    provider: str = "openai"
+    provider: Literal["openai", "gemini"] = "openai"
     model: str
     base_url: str | None = None
     temperature: float = Field(default=0, ge=0, le=2)
-    reasoning_effort: str | None = None
+    reasoning_effort: ReasoningEffort | None = None
 
     @model_validator(mode="after")
-    def validar_provider(self) -> ModelConfig:
-        if self.provider not in {"openai", "gemini"}:
-            raise ValueError("provider deve ser openai ou gemini")
-        if self.provider == "gemini" and self.reasoning_effort == "none":
-            raise ValueError("Gemini não aceita reasoning_effort=none; use low")
+    def validar_reasoning_gemini(self) -> ModelConfig:
+        if self.provider == "gemini" and self.reasoning_effort not in {
+            None,
+            "minimal",
+            "low",
+            "medium",
+            "high",
+        }:
+            raise ValueError("reasoning_effort inválido para Gemini")
         return self
 
 
-class ExtractorConfig(ModelConfig):
+class StageConfig(ModelConfig):
     async_requests: bool = False
     max_concurrency: int = Field(default=4, ge=1)
 
@@ -52,9 +59,9 @@ class PipelineConfig(Contract):
     input_dir: Path
     workdir: Path
     database: Path
-    extractor: ExtractorConfig
-    completeness: ModelConfig
-    veracity: ModelConfig
+    extractor: StageConfig
+    completeness: StageConfig
+    veracity: StageConfig
 
     @classmethod
     def from_yaml(cls, caminho: Path) -> PipelineConfig:
@@ -218,5 +225,20 @@ class ClassificadorCompletude(Protocol):
     ) -> ResultadoCompletude: ...
 
 
+class ClassificadorCompletudeAsync(Protocol):
+    async def classificar_async(
+        self,
+        candidato: CandidatoCitacao,
+        contexto: str,
+    ) -> ResultadoCompletude: ...
+
+
 class ClassificadorVeracidade(Protocol):
     def classificar(self, consulta: ConsultaCanonica) -> ResultadoVeracidade: ...
+
+
+class ClassificadorVeracidadeAsync(Protocol):
+    async def classificar_async(
+        self,
+        consulta: ConsultaCanonica,
+    ) -> ResultadoVeracidade: ...

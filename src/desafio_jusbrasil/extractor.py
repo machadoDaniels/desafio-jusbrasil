@@ -4,13 +4,10 @@ from __future__ import annotations
 
 import asyncio
 from pathlib import Path
-from tempfile import NamedTemporaryFile
 
 from dotenv import load_dotenv
-
-load_dotenv()
-
 from openai import AsyncOpenAI, OpenAI
+from openai.types.chat import ChatCompletionMessageParam
 from tqdm import tqdm
 
 from .contracts import (
@@ -20,6 +17,7 @@ from .contracts import (
     ExtratorCandidatos,
     ExtratorCandidatosAsync,
     LoteCandidatosRequest,
+    ModelConfig,
     PipelineConfig,
 )
 
@@ -38,14 +36,10 @@ class AgenteExtrator:
     def __init__(
         self,
         cliente: OpenAI | AsyncOpenAI,
-        modelo: str,
-        temperature: float = 0,
-        reasoning_effort: str | None = None,
+        config: ModelConfig,
     ) -> None:
         self._cliente = cliente
-        self._modelo = modelo
-        self._temperature = temperature
-        self._reasoning_effort = reasoning_effort
+        self._config = config
 
     def extrair(self, texto: str) -> list[CandidatoCitacao]:
         if not isinstance(self._cliente, OpenAI):
@@ -59,13 +53,7 @@ class AgenteExtrator:
         candidatos = await self._consultar_modelo_async(texto)
         return self._processar_candidatos(texto, candidatos)
 
-    def _parametros(self) -> dict[str, str]:
-        parametros = {}
-        if self._reasoning_effort is not None:
-            parametros["reasoning_effort"] = self._reasoning_effort
-        return parametros
-
-    def _mensagens(self, texto: str) -> list[dict[str, str]]:
+    def _mensagens(self, texto: str) -> list[ChatCompletionMessageParam]:
         return [
             {"role": "system", "content": _SYSTEM_PROMPT},
             {
@@ -77,11 +65,11 @@ class AgenteExtrator:
     def _consultar_modelo(self, texto: str) -> list[CandidatoCitacaoRequest]:
         assert isinstance(self._cliente, OpenAI)
         resposta = self._cliente.chat.completions.parse(
-            model=self._modelo,
-            temperature=self._temperature,
+            model=self._config.model,
+            temperature=self._config.temperature,
             messages=self._mensagens(texto),
             response_format=LoteCandidatosRequest,
-            **self._parametros(),
+            reasoning_effort=self._config.reasoning_effort,
         )
         return self._obter_candidatos(resposta.choices[0].message.parsed)
 
@@ -91,11 +79,11 @@ class AgenteExtrator:
     ) -> list[CandidatoCitacaoRequest]:
         assert isinstance(self._cliente, AsyncOpenAI)
         resposta = await self._cliente.chat.completions.parse(
-            model=self._modelo,
-            temperature=self._temperature,
+            model=self._config.model,
+            temperature=self._config.temperature,
             messages=self._mensagens(texto),
             response_format=LoteCandidatosRequest,
-            **self._parametros(),
+            reasoning_effort=self._config.reasoning_effort,
         )
         return self._obter_candidatos(resposta.choices[0].message.parsed)
 
@@ -161,15 +149,14 @@ def _iou(a: CandidatoCitacao, b: CandidatoCitacao) -> float:
     return intersecao / uniao
 
 
-def _escrever_jsonl(documentos: list[DocumentoExtraido], destino: Path) -> None:
-    destino.parent.mkdir(parents=True, exist_ok=True)
-    with NamedTemporaryFile(
-        "w", encoding="utf-8", dir=destino.parent, delete=False
-    ) as temporario:
-        caminho_temporario = Path(temporario.name)
-        for documento in documentos:
-            temporario.write(documento.model_dump_json(exclude_none=True) + "\n")
-    caminho_temporario.replace(destino)
+def _escrever_jsons(documentos: list[DocumentoExtraido], destino: Path) -> None:
+    destino.mkdir(parents=True, exist_ok=True)
+    for documento in documentos:
+        caminho = destino / f"{documento.documento_id}.json"
+        caminho.write_text(
+            documento.model_dump_json(indent=2, exclude_none=True) + "\n",
+            encoding="utf-8",
+        )
 
 
 def executar_extracao(
@@ -191,7 +178,7 @@ def executar_extracao(
                 candidatos=extrator.extrair(texto),
             )
         )
-    _escrever_jsonl(documentos, output_file)
+    _escrever_jsons(documentos, output_file)
 
 
 async def executar_extracao_async(
@@ -222,7 +209,7 @@ async def executar_extracao_async(
         documentos = await asyncio.gather(*(processar(arquivo) for arquivo in arquivos))
     finally:
         progresso.close()
-    _escrever_jsonl(documentos, output_file)
+    _escrever_jsons(documentos, output_file)
 
 
 async def _executar_extracao_async(config: PipelineConfig, destino: Path) -> None:
@@ -230,19 +217,15 @@ async def _executar_extracao_async(config: PipelineConfig, destino: Path) -> Non
         await executar_extracao_async(
             config.input_dir,
             destino,
-            AgenteExtrator(
-                cliente,
-                config.extractor.model,
-                config.extractor.temperature,
-                config.extractor.reasoning_effort,
-            ),
+            AgenteExtrator(cliente, config.extractor),
             config.extractor.max_concurrency,
         )
 
 
 def main() -> None:
+    load_dotenv()
     config = PipelineConfig.from_yaml(Path("pipeline.yaml"))
-    destino = config.workdir / "01-extraction.jsonl"
+    destino = config.workdir / "01-extraction"
     if config.extractor.async_requests:
         asyncio.run(_executar_extracao_async(config, destino))
     else:
@@ -251,9 +234,7 @@ def main() -> None:
             destino,
             AgenteExtrator(
                 OpenAI(base_url=config.extractor.base_url),
-                config.extractor.model,
-                config.extractor.temperature,
-                config.extractor.reasoning_effort,
+                config.extractor,
             ),
         )
     print(f"{destino}: extração concluída")
