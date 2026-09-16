@@ -1,0 +1,196 @@
+nivel,documento_id,citacao_id,inicio,fim,trecho,tipo,classificacao,id_canonico
+1,gen_n1_001,g2,589,652,julgado do STF proferido em 2024 pela relatoria de Dias Toffoli,jurisprudencia,incompleta,
+1,gen_n1_001,g3,797,820,Reclamação nº 66.516/RO,jurisprudencia,inventada,
+1,gen_n1_001,g4,951,985,AgInt 7557430-50.2018.7.00.0000/DF,jurisprudencia,inventada,
+1,gen_n1_001,g5,1398,1479,julgado do STM proferido em 2023\npela relatoria de CARLOS AUGUSTO AMARAL OLIVEIRA,jurisprudencia,incompleta,
+1,gen_n1_001,g6,1928,1963,APL nº\n7000449-40.2023.7.00.0000/RS,jurisprudencia,real,5665364632
+1,gen_n1_001,g8,2901,2914,Rcl 88.178/RS,jurisprudencia,inventada,
+1,gen_n1_001,g9,3058,3114,"precedente do STM de 2023, da relatoria de Marco Antonio",jurisprudencia,incompleta,
+1,gen_n1_001,g10,3252,3287,RSE nº 7000592-58.2025.7.00.0000/DF,jurisprudencia,real,6689204911
+1,gen_n1_002,g1,651,709,"precedente\ndo STF de 2026, da relatoria de CRISTIANO ZANIN",jurisprudencia,incompleta,
+1,gen_n1_002,g2,845,898,"Reclamação\ndo STF, de 2025, Rel. Min. CRISTIANO ZANIN",jurisprudencia,incompleta,
+1,gen_n1_002,g3,1052,1065,Rcl 55.626/DF,jurisprudencia,inventada,
+1,gen_n1_002,g4,1464,1501,Recurso em Habeas Corpus nº 57.763/PR,jurisprudencia,real,3576055165
+1,gen_n1_002,g5,1613,1643,AgInt no AREsp nº 1.996.496/RJ,jurisprudencia,real,1922829498
+1,gen_n1_002,g6,2133,2153,Súmula Vinculante 10,jurisprudencia,real,1289712966
+1,gen_n1_002,g7,2308,2350,Agravo em Recurso Especial nº 1.708.000/SP,jurisprudencia,real,2678821961
+1,gen_n1_002,g9,3364,3396,art. 1.134 da Lei nº\n13.105/2015,lei,inventada,
+1,gen_n1_003,g1,577,593,AREsp 1576933/SP,jurisprudencia,real,2108020112
+1,gen_n1_003,g3,1193,1235,art. 158 do Código de Defesa do Consumidor,lei,inventada,
+1,gen_n1_003,g4,1677,1695,REsp nº 2020005/RJ,jurisprudencia,real,2939285691
+1,gen_n1_003,g6,2308,2380,"Agravo em Recurso Especial do STJ,\nde 2023, Rel. Min. Assusete Magalhães",jurisprudencia,incompleta,
+1,gen_n1_003,g7,2480,2522,art. 185 do Código de Defesa do Consumidor,lei,inventada,
+1,gen_n1_003,g8,3034,3060,AgRg no AREsp 1.327.863/PR,jurisprudencia,real,3445761877
+1,gen_n1_003,g9,3204,3223,"art. 373, I, do CPC",lei,real,28893055
+1,gen_n1_004,g1,460,492,APL 7357951-18.2020.7.00.0000/RJ,jurisprudencia,inventada,
+1,gen_n1_004,g2,964,1013,artigo correspondente do Código de Processo Civil,lei,incompleta,
+1,gen_n1_004,g3,1435,1450,RE 7.216.673/RS,jurisprudencia,inventada,
+1,gen_n1_004,g4,1571,1603,APL 7000136-79.2023.7.00.0000/RS,jurisprudencia,real,2161632985
+1,gen_n1_004,g5,2005,2040,RSE nº 7000768-37.2025.7.00.0000/RS,jurisprudencia,real,6688597116
+1,gen_n1_004,g6,2508,2540,art.\n290 do Código Penal Militar,lei,real,10590194
+1,gen_n1_004,g7,2639,2671,RSE 7000082-11.2026.7.00.0000/RS,jurisprudencia,real,6689057510
+1,gen_n1_005,g3,848,874,AgInt no REsp 1.599.910/PR,jurisprudencia,real,2684964055
+1,gen_n1_005,g4,1030,1071,AgInt no Recurso\nEspecial nº 1.620.021/PR,jurisprudencia,real,1659996497
+1,gen_n1_005,g5,1532,1558,AgInt no REsp 1.664.893/PR,jurisprudencia,real,2684902370
+1,gen_n1_005,g6,2039,2104,julgado do STF proferido em 2025 pela relatoria de ANDRÉ MENDONÇA,jurisprudencia,incompleta,
+1,gen_n1_005,g7,2668,2681,Rcl 88.860/PE,jurisprudencia,inventada,
+1,gen_n1_006,g1,505,536,AgR-REspe 378-82.2016.6.05.0151,jurisprudencia,real,469077298
+1,gen_n1_006,g2,657,709,Recurso Especial Eleitoral nº 2137-73.2014.6.21.0000,jurisprudencia,real,375394498
+1,gen_n1_006,g3,1163,1194,REspe 0600530-94.2020.6.26.0171,jurisprudencia,real,1891499398
+1,gen_n1_006,g4,1331,1364,"Rcl de 2021, Rel.\nMin. Rosa Weber",jurisprudencia,incompleta,
+1,gen_n1_006,g5,1818,1856,art. 75 da Lei Complementar nº 64/1990,lei,inventada,
+1,gen_n1_006,g6,1991,2051,acórdão do TSE\njulgado em 2020 sob relatoria de Edson Fachin,jurisprudencia,incompleta,
+1,gen_n1_006,g7,2188,2201,Rcl\n33.132/AC,jurisprudencia,inventada,
+1,gen_n1_006,g8,2684,2712,art. 462 do Código Eleitoral,lei,inventada,
+1,gen_n1_006,g9,3086,3119,AREspEI 0601514-91.2020.6.05.0000,jurisprudencia,real,1888419216
+1,gen_n1_007,g1,531,572,"art. 93, IX, da Constituição da República",lei,real,10626510
+1,gen_n1_007,g2,946,968,AgInt na Rcl 36.670/SP,jurisprudencia,real,2679568224
+1,gen_n1_007,g3,1422,1483,julgado do STF proferido em 2021 pela relatoria de Rosa Weber,jurisprudencia,incompleta,
+1,gen_n1_007,g4,1636,1652,RHC nº 55.508/RS,jurisprudencia,inventada,
+1,gen_n1_007,g5,1732,1764,art. 261 da Constituição Federal,lei,inventada,
+1,gen_n1_007,g6,1902,1937,"Rcl de 2025, Rel. Min. CÁRMEN LÚCIA",jurisprudencia,incompleta,
+1,gen_n1_007,g7,2360,2426,acórdão do STJ julgado em 2023 sob relatoria de Assusete Magalhães,jurisprudencia,incompleta,
+1,gen_n1_007,g8,2892,2909,REsp 1.883.715/SP,jurisprudencia,real,1915411069
+1,gen_n1_007,g9,3028,3051,Reclamação nº 11.125/SP,jurisprudencia,inventada,
+1,gen_n1_008,g1,558,603,art. 477 da Consolidação das Leis do Trabalho,lei,real,10710324
+1,gen_n1_008,g3,888,933,processo nº TST-E-RR-173000-49.2008.5.15.0024,jurisprudencia,real,653841135
+1,gen_n1_008,g4,1341,1378,TST-ED-E-ED-RR-3400-05.2011.5.21.0009,jurisprudencia,real,861411570
+1,gen_n1_008,g5,1831,1844,Rcl 77.140/SP,jurisprudencia,inventada,
+1,gen_n1_008,g6,2332,2347,art. 818 da CLT,lei,real,10647746
+1,gen_n1_008,g9,3099,3116,Súmula 331 do TST,jurisprudencia,real,1431369957
+1,gen_n1_008,g10,3238,3251,Rcl 88.696/RJ,jurisprudencia,inventada,
+1,gen_n1_009,g1,616,686,Embargos de Declaração no Recurso em Mandado de Segurança\nnº 67.101/RJ,jurisprudencia,real,1480058767
+1,gen_n1_009,g3,1386,1403,REsp 1.501.000/RJ,jurisprudencia,real,3584971504
+1,gen_n1_009,g4,1921,1934,RHC 346037/PR,jurisprudencia,inventada,
+1,gen_n1_009,g5,2449,2533,Embargos de Declaração no Agravo Interno no Agravo em Recurso Especial nº 1904603/TO,jurisprudencia,real,3360644937
+1,gen_n1_009,g6,2968,2985,Súmula 979 do STF,jurisprudencia,inventada,
+1,gen_n1_009,g7,3065,3098,AgInt nos EDcl no REsp 2144995/RJ,jurisprudencia,real,5533262570
+1,gen_n1_009,g8,3220,3235,REsp 5672508/RJ,jurisprudencia,inventada,
+1,gen_n1_009,g9,3401,3465,Agravo Interno na Suspensão\nde Liminar e de Sentença nº 2.883/MA,jurisprudencia,real,6576893354
+1,gen_n1_009,g10,3603,3635,EDcl no AgInt no REsp 1889127/SE,jurisprudencia,real,2563032738
+1,gen_n1_010,g1,477,494,REsp 6.989.916/RS,jurisprudencia,inventada,
+1,gen_n1_010,g2,933,949,RHC nº\n88.033/RS,jurisprudencia,real,2566417138
+1,gen_n1_010,g4,1612,1629,Súmula 443 do STJ,jurisprudencia,real,1289711022
+1,gen_n1_010,g5,2140,2172,Recurso Especial nº 1.657.496/RS,jurisprudencia,real,2684945476
+1,gen_n1_010,g6,2556,2588,Recurso Especial nº 1.718.894/SP,jurisprudencia,real,3444970751
+1,gen_n1_010,g7,2748,2777,AgInt no REsp nº 1.944.552/RS,jurisprudencia,real,2549257337
+1,gen_n1_010,g8,2918,2931,Rcl 33.235/RJ,jurisprudencia,inventada,
+1,gen_n1_010,g9,3049,3107,Agravo Interno no Agravo em Recurso Especial nº 1807643/RS,jurisprudencia,real,2107673016
+1,gen_n1_010,g10,3235,3251,Rcl nº 55.930/SP,jurisprudencia,inventada,
+1,gen_n1_011,g1,502,523,Súmula Vinculante 182,jurisprudencia,inventada,
+1,gen_n1_011,g2,670,728,"precedente do STF de 2024, da relatoria de Cristiano\nZanin",jurisprudencia,incompleta,
+1,gen_n1_011,g3,1216,1242,AgInt no REsp 1.820.970/SC,jurisprudencia,real,2679580316
+1,gen_n1_011,g4,1710,1746,"art. 5º, LV, da Constituição Federal",lei,real,10641516
+1,gen_n1_011,g5,2204,2220,RHC nº 55.509/SC,jurisprudencia,inventada,
+1,gen_n1_011,g6,2363,2421,"precedente do STF de 2026,\nda relatoria de CRISTIANO ZANIN",jurisprudencia,incompleta,
+1,gen_n1_011,g7,2828,2851,Reclamação nº 33.125/SP,jurisprudencia,inventada,
+1,gen_n1_012,g1,574,605,ED-E-ED-RR-65-63.2010.5.01.0075,jurisprudencia,real,862182008
+1,gen_n1_012,g2,1119,1143,"art. 896, § 1º-A, da CLT",lei,real,10637358
+1,gen_n1_012,g3,1218,1243,ARR-213-85.2010.5.02.0030,jurisprudencia,real,867328396
+1,gen_n1_012,g4,1412,1428,Rcl nº 66.884/RJ,jurisprudencia,inventada,
+1,gen_n1_012,g5,1891,1914,Reclamação nº 22.357/PE,jurisprudencia,inventada,
+1,gen_n1_012,g6,2043,2085,processo nº TST-RR-79500-16.2009.5.15.0016,jurisprudencia,real,867273442
+1,gen_n1_012,g8,2970,2986,Rcl nº\n68.244/SP,jurisprudencia,real,2785081280
+1,gen_n1_012,g9,3135,3170,Terceiro AG.REG na Rcl nº 62.425/SP,jurisprudencia,real,2428195275
+1,gen_n1_012,g10,3317,3330,Rcl 44.960/PE,jurisprudencia,inventada,
+1,gen_n1_013,g1,548,602,reiterados\nprecedentes do Superior Tribunal de Justiça,jurisprudencia,incompleta,
+1,gen_n1_013,g2,1041,1064,Reclamação nº 22.225/SP,jurisprudencia,inventada,
+1,gen_n1_013,g4,1629,1676,"art. 1º, I, 'g', da Lei Complementar nº 64/1990",lei,real,11304039
+1,gen_n1_013,g5,2109,2183,julgado\ndo TSE proferido em 2016 pela relatoria de HENRIQUE NEVES DA SILVA,jurisprudencia,incompleta,
+1,gen_n1_013,g6,2319,2336,Súmula 168 do TSE,jurisprudencia,inventada,
+1,gen_n1_013,g7,2532,2603,Agravo Regimental no Agravo de Instrumento nº 0606252-11.2018.6.26.0000,jurisprudencia,real,1931806554
+1,gen_n1_013,g8,2973,3002,R-Rp nº 986-96.2010.6.00.0000,jurisprudencia,real,16794531
+2,gen_n2_001,g1,544,563,RE nº 5. 230.808-DF,jurisprudencia,inventada,
+2,gen_n2_001,g2,972,989,RCL n° 33128 (GO),jurisprudencia,inventada,
+2,gen_n2_001,g3,1194,1244,"Reclamação\ndo STF, de 2024, Rel. Min. Cármen Lúcia",jurisprudencia,incompleta,
+2,gen_n2_001,g4,1707,1742,AgRg no Rec. Esp. n. 1.522.200 (SC),jurisprudencia,real,192165489
+2,gen_n2_001,g5,2220,2237,Súmula 935\ndo STF,jurisprudencia,inventada,
+2,gen_n2_001,g6,2343,2407,julgado do STJ proferido em 2023 pela relatoria dc Sérgio Kukinã,jurisprudencia,incompleta,
+2,gen_n2_001,g7,2528,2566,Recurso em Habeas Corpus nº 93967 - SC,jurisprudencia,real,2685013495
+2,gen_n2_001,g8,2976,3045,EDcl nos EDcl no AgInt no Agravo em Recurso Especial No  1145207 – SP,jurisprudencia,real,6304461308
+2,gen_n2_002,g1,670,736,acórdão do STJ julgado em 2021 sob relatoria de Assusete Magalhães,jurisprudencia,incompleta,
+2,gen_n2_002,g2,1225,1242,5úmula 211 do STJ,jurisprudencia,real,1289710776
+2,gen_n2_002,g3,1399,1441,"Rcl de 2022, Rel. Min. Alexandre De Moraes",jurisprudencia,incompleta,
+2,gen_n2_002,g4,1901,1970,julgado do STJ proferido em\n2023 pela relatoria de Assusete Magãlhães,jurisprudencia,incompleta,
+2,gen_n2_002,g5,2508,2529,AgREsp Nº  84690 - MG,jurisprudencia,inventada,
+2,gen_n2_002,g6,2995,3038,"artigo 93, IX, da Constituição\nda República",lei,real,10626510
+2,gen_n2_002,g7,3202,3229,Rec. Esp. No 1.880.529\n- SP,jurisprudencia,real,1915411053
+2,gen_n2_003,g1,613,668,"precedente do STF\nde 2024, da relatoria de Cármen Lúcia",jurisprudencia,incompleta,
+2,gen_n2_003,g2,736,789,Processo n° TST- ED - E-ED-RR-41200-79.2011.5.21.0005,jurisprudencia,real,861411580
+2,gen_n2_003,g3,1289,1314,RR-1835-06.2010.5.15.0042,jurisprudencia,real,392669042
+2,gen_n2_003,g4,1726,1745,RE. nº 3.647.129-RS,jurisprudencia,inventada,
+2,gen_n2_003,g5,1847,1863,Rcl n° 66698/ BA,jurisprudencia,inventada,
+2,gen_n2_003,g7,2559,2578,artigo 1.143 da CLT,lei,inventada,
+2,gen_n2_003,g8,2988,3027,TST-ED-E-ED-ARR-1099-66.2011.5.02.\n0251,jurisprudencia,real,861411566
+2,gen_n2_004,g2,1014,1045,artigo 172 da Lei nº 9.504/1997,lei,inventada,
+2,gen_n2_004,g3,1463,1478,Súm. 166 do TSE,jurisprudencia,inventada,
+2,gen_n2_004,g5,2055,2092,REspe. n° 0600216-46.2020-\n.6.14.0022,jurisprudencia,real,1887816799
+2,gen_n2_004,g6,2244,2286,EDs no AGR-RESPE n° 533-80. 2012.6.13.0029,jurisprudencia,real,369460073
+2,gen_n2_004,g7,2390,2418,art 189 da Lei nº 9.504/1997,lei,inventada,
+2,gen_n2_005,g1,574,601,Reclamação n° 33.-\n474 (MA),jurisprudencia,inventada,
+2,gen_n2_005,g3,1122,1175,"Reclamação do STF, de 2026, Rel. Min. CRISTIANO ZANIN",jurisprudencia,incompleta,
+2,gen_n2_005,g4,1617,1669,"Reclamação do STF, de 2020, Rel. Min. Celso De Mello",jurisprudencia,incompleta,
+2,gen_n2_005,g5,1765,1793,art 60 da Lei nº 13.467/2017,lei,inventada,
+2,gen_n2_005,g6,1901,1935,TST-AgARR-25823-78.2015.5.24.\n0091,jurisprudencia,real,2813052232
+2,gen_n2_005,g7,2388,2466,julgado do TST proferido\nem 2017 pela relatoria de José Roberto Freire Pimenta,jurisprudencia,incompleta,
+2,gen_n2_005,g8,2959,3011,Processo n° TST- ED-E-ED-RR-160000-97.2010.5.21.0006,jurisprudencia,real,862014739
+2,gen_n2_005,g9,3172,3212,"artigo 7º, XXIX, da Constituição Fedcral",lei,real,10641213
+2,gen_n2_006,g1,494,560,julgado do STF profcrido em 2025 pela relatoria de CRISTIANO\nZANIN,jurisprudencia,incompleta,
+2,gen_n2_006,g2,681,708,art 276 do Código Eleitoral,lei,real,10577194
+2,gen_n2_006,g3,857,891,artigo 279 da Constituição\nFederal,lei,inventada,
+2,gen_n2_006,g4,992,1033,ED no AgR-REspe No  0600316-4920206160182,jurisprudencia,real,1888340642
+2,gen_n2_006,g5,1468,1496,AgR-AI 0603026-6920186090000,jurisprudencia,real,1888089426
+2,gen_n2_006,g6,1928,1980,"Reclamação do STF, de 2020, Rel. Min. Celso De Mello",jurisprudencia,incompleta,
+2,gen_n2_006,g7,2402,2430,Reclamação n.  44-\n.921 (PE),jurisprudencia,inventada,
+2,gen_n2_006,g9,3026,3097,acórdão do TSE julgado em 2016 sob relatoria de HENRIQUE NEVES DA SILVA,jurisprudencia,incompleta,
+2,gen_n2_007,g1,514,547,Ag. Int. No 7001184-1520197000000,jurisprudencia,real,2382656124
+2,gen_n2_007,g2,955,986,art 290 da Constituição\nFederal,lei,inventada,
+2,gen_n2_007,g3,1416,1451,"Rcl de 2024, Rel.  Min. Flávio Dino",jurisprudencia,incompleta,
+2,gen_n2_007,g4,1549,1587,RSE Nº 7220273--\n23.2018.7.00.0000/ RS,jurisprudencia,inventada,
+2,gen_n2_007,g5,1818,1833,RCL n° 88905-DF,jurisprudencia,inventada,
+2,gen_n2_007,g6,1972,2005,APL\n 7000761-84 2021 7 00 0000/BA,jurisprudencia,real,2383009176
+2,gen_n2_007,g7,2100,2121,Súmula Vinculante 188,jurisprudencia,inventada,
+2,gen_n2_007,g8,2519,2553,RSE n.  7000171-3920237000000 (DF),jurisprudencia,real,2382852256
+2,gen_n2_008,g2,1206,1241,Recurso Especial n°  2.467-\n.648-RS,jurisprudencia,inventada,
+2,gen_n2_008,g4,1898,1932,EDcl no AgInt no ARESP 1980827/ RS,jurisprudencia,real,3360644282
+2,gen_n2_008,g5,2384,2400,RCL nº 99.942-BA,jurisprudencia,inventada,
+2,gen_n2_008,g6,2931,2980,artigo correspondente\ndo Código de Processo Civil,lei,incompleta,
+2,gen_n2_008,g7,3051,3078,AgRg no H.C. Nº 891369 (RS),jurisprudencia,real,2849473714
+2,gen_n2_009,g1,539,568,Rec. Esp. nº  1. 570.531 – CE,jurisprudencia,real,3347738001
+2,gen_n2_009,g2,725,762,EDcl no AgInt no ARESP  1 821 663/ SC,jurisprudencia,real,3375797414
+2,gen_n2_009,g3,883,915,art. 303 da Constituição\nFederal,lei,inventada,
+2,gen_n2_009,g5,1188,1208,A.REsp\n 555 700 (RS),jurisprudencia,inventada,
+2,gen_n2_009,g6,1614,1640,AgInt no RESP 21737l8 - SP,jurisprudencia,real,6490934118
+2,gen_n2_009,g7,1771,1786,AR\nn. 2785 (SP),jurisprudencia,real,2549252487
+2,gen_n2_009,g8,2227,2257,AgInt no RESP nº 1.666.812/ PR,jurisprudencia,real,524699160
+2,gen_n2_009,g10,3263,3283,REsp Nº 1.632.479-RJ,jurisprudencia,real,3347737758
+2,gen_n2_010,g1,579,604,Reclamação Nº 77.872 – SC,jurisprudencia,inventada,
+2,gen_n2_010,g2,1164,1194,AgInt no ARESP Nº 1.512.757-PR,jurisprudencia,real,2107883738
+2,gen_n2_010,g3,1640,1666,artigo 186 do Código Civil,lei,real,10718759
+2,gen_n2_010,g4,2107,2148,art. 14 do Código de Defesa do Consumidor,lei,real,10606184
+2,gen_n2_010,g5,2626,2687,"precedente do\nSTJ de 2021, da relatoria de Assusete Magalhães",jurisprudencia,incompleta,
+2,gen_n2_010,g6,2841,2873,Recurso Especial nº  1377019/ SP,jurisprudencia,real,2106317594
+2,gen_n2_010,g7,2963,3007,AgInt no Recurso Especial nº  1.597.443\n- PR,jurisprudencia,real,2684973273
+2,gen_n2_011,g1,671,687,SÚMULA 83 do STJ,jurisprudencia,real,1289710642
+2,gen_n2_011,g2,802,821,ARESP No 2178783/RS,jurisprudencia,inventada,
+2,gen_n2_011,g3,968,988,RESP n. 1 307 026/BA,jurisprudencia,real,3580782436
+2,gen_n2_011,g4,1120,1151,Temã 2.680 da repercussão geral,jurisprudencia,inventada,
+2,gen_n2_011,g5,1270,1289,Recl. n° 6G.838/ BA,jurisprudencia,inventada,
+2,gen_n2_011,g6,1871,1888,Súmula 928 do\nSTF,jurisprudencia,inventada,
+2,gen_n2_011,g7,2313,2362,EDcl no AgInt no Recurso Especial Nº 170076O (SP),jurisprudencia,real,5900603362
+2,gen_n2_011,g8,2473,2517,AgInt nos EDcl no Rec. Esp. n°\n 2.050.950-RJ,jurisprudencia,real,2108195032
+2,gen_n2_011,g9,2934,2972,art. 1.105 do Código de Processo Civil,lei,inventada,
+2,gen_n2_012,g1,481,507,AgRg no RESP 1.528.4S5/ RJ,jurisprudencia,real,2674928810
+2,gen_n2_012,g3,1082,1155,"Recurso em Habeas Corpus do STJ, de 2019, Rel. Min. Sebastião\nReis Júnlor",jurisprudencia,incompleta,
+2,gen_n2_012,g4,1282,1299,AgREsp 9188087/ES,jurisprudencia,inventada,
+2,gen_n2_012,g6,1603,1627,Reclamação nº 33560 - BA,jurisprudencia,inventada,
+2,gen_n2_012,g7,2089,2124,art 312 do Código\nde Processo Penal,lei,real,10652044
+2,gen_n2_012,g8,2540,2563,R.Esp. n°  1.45g.779-MA,jurisprudencia,real,2106305320
+2,gen_n2_012,g9,2695,2718,Reclamação 33. 672 (BA),jurisprudencia,inventada,
+2,gen_n2_012,g10,3158,3174,RMS Nº  67109-TO,jurisprudencia,real,2675221299
+2,gen_n2_013,g1,516,554,AGINT nº 7000462-39.2023.7.00.0000/ DF,jurisprudencia,real,2382484994
+2,gen_n2_013,g2,1011,1049,"APL de 2023, Rel. Min.\nLEONARDO PUNTEL",jurisprudencia,incompleta,
+2,gen_n2_013,g3,1375,1448,acórdão do STM julgado em 2021 sob relatoria de ARTUR VIDIGAL\nDE OLIVEIRA,jurisprudencia,incompleta,
+2,gen_n2_013,g4,1883,1913,AgInt No 7000553-0320217000000,jurisprudencia,real,1477658218
+2,gen_n2_013,g5,2055,2075,Recl. Nº 66 152 (PR),jurisprudencia,inventada,
+2,gen_n2_013,g6,2191,2226,APL n° 7000076-72.2024.7.00.0000-RJ,jurisprudencia,real,2733853490
