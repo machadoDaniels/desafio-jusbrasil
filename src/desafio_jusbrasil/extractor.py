@@ -6,7 +6,7 @@ import asyncio
 from pathlib import Path
 
 from dotenv import load_dotenv
-from openai import AsyncOpenAI, OpenAI
+from openai import AsyncOpenAI, OpenAI, omit
 from openai.types.chat import ChatCompletionMessageParam
 from tqdm import tqdm
 
@@ -66,10 +66,24 @@ class AgenteExtrator:
         assert isinstance(self._cliente, OpenAI)
         resposta = self._cliente.chat.completions.parse(
             model=self._config.model,
-            temperature=self._config.temperature,
+            temperature=(
+                self._config.temperature
+                if self._config.temperature is not None
+                else omit
+            ),
+            top_p=self._config.top_p if self._config.top_p is not None else omit,
             messages=self._mensagens(texto),
             response_format=LoteCandidatosRequest,
-            reasoning_effort=self._config.reasoning_effort,
+            reasoning_effort=(
+                self._config.reasoning_effort
+                if self._config.reasoning_effort is not None
+                else omit
+            ),
+            extra_body=(
+                {"top_k": self._config.top_k}
+                if self._config.top_k is not None
+                else None
+            ),
         )
         return self._obter_candidatos(resposta.choices[0].message.parsed)
 
@@ -80,10 +94,24 @@ class AgenteExtrator:
         assert isinstance(self._cliente, AsyncOpenAI)
         resposta = await self._cliente.chat.completions.parse(
             model=self._config.model,
-            temperature=self._config.temperature,
+            temperature=(
+                self._config.temperature
+                if self._config.temperature is not None
+                else omit
+            ),
+            top_p=self._config.top_p if self._config.top_p is not None else omit,
             messages=self._mensagens(texto),
             response_format=LoteCandidatosRequest,
-            reasoning_effort=self._config.reasoning_effort,
+            reasoning_effort=(
+                self._config.reasoning_effort
+                if self._config.reasoning_effort is not None
+                else omit
+            ),
+            extra_body=(
+                {"top_k": self._config.top_k}
+                if self._config.top_k is not None
+                else None
+            ),
         )
         return self._obter_candidatos(resposta.choices[0].message.parsed)
 
