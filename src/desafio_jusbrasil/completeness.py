@@ -4,13 +4,15 @@ from __future__ import annotations
 
 import asyncio
 from pathlib import Path
+from typing import Any
 
 from dotenv import load_dotenv
-from openai import AsyncOpenAI, OpenAI
+from openai import AsyncOpenAI, OpenAI, omit
 from openai.types.chat import ChatCompletionMessageParam
 from tqdm import tqdm
 
 from .contracts import (
+    AuditoriaChamadaModelo,
     CandidatoAnalisado,
     CandidatoCitacao,
     ClassificadorCompletude,
@@ -20,6 +22,7 @@ from .contracts import (
     ModelConfig,
     PipelineConfig,
     ResultadoCompletude,
+    escrever_manifesto_etapa,
 )
 
 _SYSTEM_PROMPT = """Você avalia citações jurídicas brasileiras.
@@ -40,70 +43,95 @@ class AgenteCompletude:
         self._cliente = cliente
         self._config = config
 
-    def classificar(
+    def classificar_auditada(
         self,
         candidato: CandidatoCitacao,
         contexto: str,
-    ) -> ResultadoCompletude:
+    ) -> tuple[ResultadoCompletude, AuditoriaChamadaModelo]:
         if not isinstance(self._cliente, OpenAI):
-            raise TypeError("classificar() exige um cliente OpenAI síncrono")
-        return self._consultar_modelo(candidato, contexto)
+            raise TypeError("classificar_auditada() exige cliente síncrono")
+        requisicao = self._requisicao(candidato, contexto)
+        resposta = self._cliente.chat.completions.parse(**requisicao)
+        resultado = self._obter_resultado(resposta.choices[0].message.parsed)
+        return resultado, self._auditoria(requisicao, resposta, resultado)
 
-    async def classificar_async(
+    async def classificar_auditada_async(
         self,
         candidato: CandidatoCitacao,
         contexto: str,
-    ) -> ResultadoCompletude:
+    ) -> tuple[ResultadoCompletude, AuditoriaChamadaModelo]:
         if not isinstance(self._cliente, AsyncOpenAI):
-            raise TypeError("classificar_async() exige um cliente AsyncOpenAI")
-        return await self._consultar_modelo_async(candidato, contexto)
+            raise TypeError("classificar_auditada_async() exige cliente assíncrono")
+        requisicao = self._requisicao(candidato, contexto)
+        resposta = await self._cliente.chat.completions.parse(**requisicao)
+        resultado = self._obter_resultado(resposta.choices[0].message.parsed)
+        return resultado, self._auditoria(requisicao, resposta, resultado)
 
+    @staticmethod
     def _mensagens(
-        self,
         candidato: CandidatoCitacao,
         contexto: str,
     ) -> list[ChatCompletionMessageParam]:
+        candidato_json = candidato.model_dump_json(
+            exclude={"confianca_extracao", "inicio", "fim"},
+            exclude_none=True,
+        )
         return [
             {"role": "system", "content": _SYSTEM_PROMPT},
             {
                 "role": "user",
-                "content": (
-                    "Candidato:\n"
-                    f"{candidato.model_dump_json(exclude_none=True)}\n\n"
-                    f"Contexto:\n{contexto}"
-                ),
+                "content": f"Candidato:\n{candidato_json}\n\nContexto:\n{contexto}",
             },
         ]
 
-    def _consultar_modelo(
+    def _requisicao(
         self,
         candidato: CandidatoCitacao,
         contexto: str,
-    ) -> ResultadoCompletude:
-        assert isinstance(self._cliente, OpenAI)
-        resposta = self._cliente.chat.completions.parse(
-            model=self._config.model,
-            temperature=self._config.temperature,
-            messages=self._mensagens(candidato, contexto),
-            response_format=ResultadoCompletude,
-            reasoning_effort=self._config.reasoning_effort,
-        )
-        return self._obter_resultado(resposta.choices[0].message.parsed)
+    ) -> dict[str, Any]:
+        requisicao: dict[str, Any] = {
+            "model": self._config.model,
+            "temperature": self._config.temperature
+            if self._config.temperature is not None
+            else omit,
+            "top_p": self._config.top_p if self._config.top_p is not None else omit,
+            "messages": self._mensagens(candidato, contexto),
+            "response_format": ResultadoCompletude,
+            "reasoning_effort": self._config.reasoning_effort
+            if self._config.reasoning_effort is not None
+            else omit,
+        }
+        if self._config.top_k is not None:
+            requisicao["extra_body"] = {"top_k": self._config.top_k}
+        return requisicao
 
-    async def _consultar_modelo_async(
-        self,
-        candidato: CandidatoCitacao,
-        contexto: str,
-    ) -> ResultadoCompletude:
-        assert isinstance(self._cliente, AsyncOpenAI)
-        resposta = await self._cliente.chat.completions.parse(
-            model=self._config.model,
-            temperature=self._config.temperature,
-            messages=self._mensagens(candidato, contexto),
-            response_format=ResultadoCompletude,
-            reasoning_effort=self._config.reasoning_effort,
+    @staticmethod
+    def _auditoria(
+        requisicao: dict,
+        resposta: Any,
+        resultado: ResultadoCompletude,
+    ) -> AuditoriaChamadaModelo:
+        """Preserva a chamada ao modelo em formato JSON reproduzível.
+
+        Substitui a classe Pydantic de ``response_format`` pelo schema enviado ao
+        servidor e separa a resposta bruta do resultado estruturado. O campo
+        interno ``parsed`` é removido da cópia bruta porque contém um objeto
+        Pydantic não pertencente à resposta HTTP e já está em ``estruturada``.
+        """
+        entrada = {
+            nome: valor for nome, valor in requisicao.items() if valor is not omit
+        }
+        entrada["response_format"] = ResultadoCompletude.model_json_schema()
+        return AuditoriaChamadaModelo(
+            input=entrada,
+            output={
+                "bruta": resposta.model_dump(
+                    mode="json",
+                    exclude={"choices": {"__all__": {"message": {"parsed"}}}},
+                ),
+                "estruturada": resultado.model_dump(mode="json"),
+            },
         )
-        return self._obter_resultado(resposta.choices[0].message.parsed)
 
     @staticmethod
     def _obter_resultado(
@@ -119,36 +147,40 @@ def _obter_contexto(
     candidato: CandidatoCitacao,
     margem: int = 300,
 ) -> str:
+    if candidato.inicio is None or candidato.fim is None:
+        return candidato.trecho
     inicio = max(0, candidato.inicio - margem)
     fim = min(len(texto), candidato.fim + margem)
     return texto[inicio:fim]
 
 
-def _ler_jsons(caminho: Path) -> list[DocumentoExtraido]:
-    arquivos = sorted(caminho.glob("*.json"))
+def _listar_jsons(caminho: Path) -> list[Path]:
+    arquivos = sorted(
+        arquivo for arquivo in caminho.glob("*.json") if arquivo.name != "manifest.json"
+    )
     if not arquivos:
         raise ValueError(f"nenhum arquivo JSON encontrado em {caminho}")
-    documentos = []
-    for arquivo in arquivos:
-        try:
-            documentos.append(
-                DocumentoExtraido.model_validate_json(
-                    arquivo.read_text(encoding="utf-8")
-                )
-            )
-        except ValueError as erro:
-            raise ValueError(f"{arquivo}: {erro}") from erro
-    return documentos
+    return arquivos
 
 
-def _escrever_jsons(documentos: list[DocumentoCompletude], destino: Path) -> None:
-    destino.mkdir(parents=True, exist_ok=True)
-    for documento in documentos:
-        caminho = destino / f"{documento.documento_id}.json"
-        caminho.write_text(
-            documento.model_dump_json(indent=2, exclude_none=True) + "\n",
-            encoding="utf-8",
+def _ler_documento(arquivo: Path) -> DocumentoExtraido:
+    try:
+        return DocumentoExtraido.model_validate_json(
+            arquivo.read_text(encoding="utf-8")
         )
+    except ValueError as erro:
+        raise ValueError(f"{arquivo}: {erro}") from erro
+
+
+def _escrever_json(documento: DocumentoCompletude, destino: Path) -> None:
+    destino.mkdir(parents=True, exist_ok=True)
+    caminho = destino / f"{documento.documento_id}.json"
+    temporario = caminho.with_suffix(".json.tmp")
+    temporario.write_text(
+        documento.model_dump_json(indent=2) + "\n",
+        encoding="utf-8",
+    )
+    temporario.replace(caminho)
 
 
 def executar_completude(
@@ -156,31 +188,33 @@ def executar_completude(
     output_file: Path,
     classificador: ClassificadorCompletude,
 ) -> None:
-    documentos = _ler_jsons(input_file)
-    total = sum(len(documento.candidatos) for documento in documentos)
-    saida = []
-    with tqdm(total=total, desc="Avaliando completude") as progresso:
-        for documento in documentos:
+    arquivos = _listar_jsons(input_file)
+    with tqdm(
+        total=len(arquivos), desc="Avaliando completude", unit="documento"
+    ) as progresso:
+        for arquivo in arquivos:
+            documento = _ler_documento(arquivo)
             candidatos = []
+            chamadas = []
             for candidato in documento.candidatos:
-                candidatos.append(
-                    CandidatoAnalisado(
-                        candidato=candidato,
-                        completude=classificador.classificar(
-                            candidato,
-                            _obter_contexto(documento.texto, candidato),
-                        ),
-                    )
+                contexto = _obter_contexto(documento.texto, candidato)
+                resultado, chamada = classificador.classificar_auditada(
+                    candidato, contexto
                 )
-                progresso.update()
-            saida.append(
+                chamadas.append(chamada)
+                candidatos.append(
+                    CandidatoAnalisado(candidato=candidato, completude=resultado)
+                )
+            _escrever_json(
                 DocumentoCompletude(
                     documento_id=documento.documento_id,
                     texto=documento.texto,
                     candidatos=candidatos,
-                )
+                    chamadas_modelo=chamadas,
+                ),
+                output_file,
             )
-    _escrever_jsons(saida, output_file)
+            progresso.update()
 
 
 async def executar_completude_async(
@@ -189,37 +223,44 @@ async def executar_completude_async(
     classificador: ClassificadorCompletudeAsync,
     max_concurrency: int,
 ) -> None:
-    documentos = _ler_jsons(input_file)
-    total = sum(len(documento.candidatos) for documento in documentos)
+    arquivos = _listar_jsons(input_file)
     semaforo = asyncio.Semaphore(max_concurrency)
-    progresso = tqdm(total=total, desc="Avaliando completude")
+    progresso = tqdm(total=len(arquivos), desc="Avaliando completude", unit="documento")
 
-    async def processar(documento: DocumentoExtraido) -> DocumentoCompletude:
-        async def classificar(candidato: CandidatoCitacao) -> CandidatoAnalisado:
+    async def processar(arquivo: Path) -> None:
+        documento = _ler_documento(arquivo)
+
+        async def classificar(
+            candidato: CandidatoCitacao,
+        ) -> tuple[CandidatoAnalisado, AuditoriaChamadaModelo]:
+            contexto = _obter_contexto(documento.texto, candidato)
             async with semaforo:
-                resultado = await classificador.classificar_async(
-                    candidato,
-                    _obter_contexto(documento.texto, candidato),
+                resultado, chamada = await classificador.classificar_auditada_async(
+                    candidato, contexto
                 )
-            progresso.update()
-            return CandidatoAnalisado(candidato=candidato, completude=resultado)
+            return CandidatoAnalisado(
+                candidato=candidato,
+                completude=resultado,
+            ), chamada
 
-        candidatos = await asyncio.gather(
+        resultados = await asyncio.gather(
             *(classificar(candidato) for candidato in documento.candidatos)
         )
-        return DocumentoCompletude(
-            documento_id=documento.documento_id,
-            texto=documento.texto,
-            candidatos=candidatos,
+        _escrever_json(
+            DocumentoCompletude(
+                documento_id=documento.documento_id,
+                texto=documento.texto,
+                candidatos=[item[0] for item in resultados],
+                chamadas_modelo=[item[1] for item in resultados],
+            ),
+            output_file,
         )
+        progresso.update()
 
     try:
-        saida = await asyncio.gather(
-            *(processar(documento) for documento in documentos)
-        )
+        await asyncio.gather(*(processar(arquivo) for arquivo in arquivos))
     finally:
         progresso.close()
-    _escrever_jsons(saida, output_file)
 
 
 async def _executar_completude_async(
@@ -243,6 +284,7 @@ def main() -> None:
     entrada = config.workdir / "01-extraction"
     destino = config.workdir / "02-completeness"
     etapa = config.completeness
+    escrever_manifesto_etapa(destino, "completeness", etapa)
     if etapa.async_requests:
         asyncio.run(_executar_completude_async(config, entrada, destino))
     else:
