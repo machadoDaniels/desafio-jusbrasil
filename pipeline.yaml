@@ -1,31 +1,37 @@
 input_dir: desafio-jusbrasil-bracis-2026/txt
-workdir: outputs/run-001
+workdir: outputs/run-002
 database: desafio-jusbrasil-bracis-2026/desafio1_bracis.db
 
 extractor:
-  provider: gemini
-  model: gemini-3.5-flash
-  base_url: https://generativelanguage.googleapis.com/v1beta/openai/
-  temperature: 0
-  reasoning_effort: low
+  provider: openai
+  model: google/gemma-4-26B-A4B-it
+  base_url: http://10.100.0.121:8026/v1
+  temperature: null
+  top_p: null
+  top_k: null
+  reasoning_effort: null
   async_requests: true
-  max_concurrency: 4
+  max_concurrency: 10
 
 completeness:
-  provider: gemini
-  model: gemini-3.5-flash
-  base_url: https://generativelanguage.googleapis.com/v1beta/openai/
-  temperature: 0
-  reasoning_effort: low
+  provider: openai
+  model: google/gemma-4-26B-A4B-it
+  base_url: http://10.100.0.121:8026/v1
+  temperature: null
+  top_p: null
+  top_k: null
+  reasoning_effort: null
   async_requests: true
-  max_concurrency: 4
+  max_concurrency: 10
 
 veracity:
-  provider: gemini
-  model: gemini-3.5-flash
-  base_url: https://generativelanguage.googleapis.com/v1beta/openai/
-  temperature: 0
-  reasoning_effort: low
+  provider: openai
+  model: google/gemma-4-26B-A4B-it
+  base_url: http://10.100.0.121:8026/v1
+  temperature: null
+  top_p: null
+  top_k: null
+  reasoning_effort: null
   async_requests: true
   max_concurrency: 10
 
