@@ -4,8 +4,6 @@ from __future__ import annotations
 
 import asyncio
 import json
-import os
-import re
 import sqlite3
 from pathlib import Path
 
@@ -13,52 +11,94 @@ from dotenv import load_dotenv
 from langchain.agents import create_agent
 from langchain_core.language_models.chat_models import BaseChatModel
 from langchain_core.tools import StructuredTool
-from langchain_google_genai import ChatGoogleGenerativeAI
 from langchain_openai import ChatOpenAI
 from tqdm import tqdm
 
 from .contracts import (
+    AuditoriaChamadaModelo,
     CandidatoAnalisado,
+    CandidatoCitacao,
     CandidatoClassificado,
     Classificacao,
     ClassificadorVeracidade,
     ClassificadorVeracidadeAsync,
-    ConsultaCanonica,
+    ConsultaSQL,
     DocumentoClassificado,
     DocumentoCompletude,
     DocumentoPredito,
     ModelConfig,
     PipelineConfig,
     Predicao,
-    RegistroCanonico,
     Resolucao,
     ResultadoVeracidade,
     TipoCitacao,
+    escrever_manifesto_etapa,
 )
 
-_SYSTEM_PROMPT = """Você verifica citações jurídicas contra uma base canônica fechada.
-Sempre chame a ferramenta buscar_base_canonica antes de responder.
-Classifique como real somente quando exatamente um registro retornado corresponder
-claramente à consulta. Use o id_canonico desse registro. Se nenhum registro
-corresponder, classifique como inventada. Se faltarem dados ou houver ambiguidade
-entre registros, classifique como incompleta. Nunca invente um id_canonico.
-A justificativa deve ser curta e baseada no resultado da ferramenta.
-Nesta primeira versão, retorne null em confianca."""
+_SCHEMA_SQL = """Schema disponível:
+CREATE TABLE documentos (
+  documento_id TEXT PRIMARY KEY,
+  id INTEGER NOT NULL UNIQUE,
+  tribunal TEXT,
+  ano INTEGER,
+  relator TEXT,
+  natureza TEXT NOT NULL, -- acordao, sumula ou dispositivo
+  tipo TEXT NOT NULL,     -- jurisprudencia ou lei
+  texto TEXT NOT NULL,
+  texto_len INTEGER NOT NULL
+);
+CREATE VIRTUAL TABLE documentos_fts USING fts5(texto, content='documentos',
+content_rowid='rowid');"""
+
+_REGRAS_RESULTADO = """A consulta deve ser somente leitura e pode ser executada várias vezes. Em MATCH,
+remova ou coloque entre aspas caracteres especiais como barras e hífens. Se a
+ferramenta retornar erro_sql, corrija o SQL e tente novamente antes de responder.
+Não classifique como inventada após uma única consulta vazia. Use documentos.id
+como id_canonico. Classifique como real somente quando exatamente um registro
+corresponder claramente ao trecho. Classifique como inventada somente após esgotar
+buscas alternativas. Se os resultados permanecerem ambíguos, classifique como
+incompleta. Nunca invente id_canonico. Baseie a justificativa nos resultados SQL
+e retorne null em confianca."""
+
+_PROMPT_JURISPRUDENCIA = f"""Você verifica uma citação de jurisprudência contra uma base SQLite fechada.
+Receba o trecho original, escreva o SQL que considerar adequado e sempre execute
+a ferramenta consultar_base antes de responder.
+
+{_SCHEMA_SQL}
+
+Priorize natureza='acordao' para processos e recursos e natureza='sumula' para
+súmulas. Tente o identificador literal, suas partes distintivas e FTS5. Tolere
+abreviações, espaços, pontos, hífens, barras e ruído de OCR. Teste números com e
+sem pontuação e separadores. Use tribunal e ano apenas como filtros auxiliares.
+
+{_REGRAS_RESULTADO}"""
+
+_PROMPT_LEI = f"""Você verifica uma citação de legislação contra uma base SQLite fechada.
+Receba o trecho original, escreva o SQL que considerar adequado e sempre execute
+a ferramenta consultar_base antes de responder.
+
+{_SCHEMA_SQL}
+
+Priorize exclusivamente registros com natureza='dispositivo'. Procure o número do
+dispositivo junto ao diploma legal e tente variações de nome, abreviação,
+pontuação, espaços e ruído de OCR. Acórdãos que apenas mencionam o dispositivo não
+são o registro canônico da lei.
+
+{_REGRAS_RESULTADO}"""
+
+
+def _prompt_veracidade(tipo: TipoCitacao) -> str:
+    return _PROMPT_JURISPRUDENCIA if tipo == TipoCitacao.JURISPRUDENCIA else _PROMPT_LEI
 
 
 def criar_modelo_veracidade(config: ModelConfig) -> BaseChatModel:
-    if config.provider == "gemini":
-        return ChatGoogleGenerativeAI(
-            model=config.model,
-            api_key=os.environ["OPENAI_API_KEY"],
-            temperature=config.temperature,
-            thinking_level=config.reasoning_effort,
-        )
     return ChatOpenAI(
         model=config.model,
-        temperature=config.temperature,
-        reasoning_effort=config.reasoning_effort,
         base_url=config.base_url,
+        temperature=config.temperature,
+        top_p=config.top_p,
+        reasoning_effort=config.reasoning_effort,
+        extra_body={"top_k": config.top_k} if config.top_k is not None else None,
     )
 
 
@@ -68,45 +108,97 @@ class AgenteVeracidade:
     def __init__(self, modelo: BaseChatModel, database: Path) -> None:
         self._database = database
         ferramenta = StructuredTool.from_function(
-            func=self._buscar_para_agente,
-            name="buscar_base_canonica",
+            func=self._consultar_base,
+            name="consultar_base",
             description=(
-                "Busca acórdãos, súmulas ou dispositivos na base canônica. "
-                "Use os campos extraídos da citação e não invente valores."
+                "Executa uma consulta SQL somente leitura na base canônica e "
+                "retorna no máximo 10 registros."
             ),
-            args_schema=ConsultaCanonica,
+            args_schema=ConsultaSQL,
         )
-        self._agent = create_agent(
-            model=modelo,
-            tools=[ferramenta],
-            system_prompt=_SYSTEM_PROMPT,
-            response_format=ResultadoVeracidade,
-        )
+        self._agents = {
+            tipo: create_agent(
+                model=modelo,
+                tools=[ferramenta],
+                system_prompt=_prompt_veracidade(tipo),
+                response_format=ResultadoVeracidade,
+            )
+            for tipo in TipoCitacao
+        }
 
-    def classificar(self, consulta: ConsultaCanonica) -> ResultadoVeracidade:
-        resposta = self._agent.invoke(self._entrada(consulta))
-        return self._obter_resultado(resposta)
-
-    async def classificar_async(
+    def classificar_auditada(
         self,
-        consulta: ConsultaCanonica,
-    ) -> ResultadoVeracidade:
-        resposta = await self._agent.ainvoke(self._entrada(consulta))
-        return self._obter_resultado(resposta)
+        candidato: CandidatoCitacao,
+    ) -> tuple[ResultadoVeracidade, AuditoriaChamadaModelo]:
+        entrada = self._entrada(candidato)
+        resposta = self._agents[candidato.tipo].invoke(entrada)
+        resultado = self._obter_resultado(resposta)
+        return resultado, self._auditoria(
+            entrada,
+            resposta,
+            resultado,
+            _prompt_veracidade(candidato.tipo),
+        )
+
+    async def classificar_auditada_async(
+        self,
+        candidato: CandidatoCitacao,
+    ) -> tuple[ResultadoVeracidade, AuditoriaChamadaModelo]:
+        entrada = self._entrada(candidato)
+        resposta = await self._agents[candidato.tipo].ainvoke(entrada)
+        resultado = self._obter_resultado(resposta)
+        return resultado, self._auditoria(
+            entrada,
+            resposta,
+            resultado,
+            _prompt_veracidade(candidato.tipo),
+        )
 
     @staticmethod
-    def _entrada(consulta: ConsultaCanonica) -> dict:
+    def _entrada(candidato: CandidatoCitacao) -> dict:
         return {
             "messages": [
                 {
                     "role": "user",
                     "content": (
-                        "Verifique esta consulta canônica:\n"
-                        + consulta.model_dump_json(exclude_none=True)
+                        f"Tipo definido pelo extractor: {candidato.tipo.value}\n"
+                        f"Trecho original:\n{candidato.trecho}"
                     ),
                 }
             ]
         }
+
+    @staticmethod
+    def _auditoria(
+        entrada: dict,
+        resposta: dict,
+        resultado: ResultadoVeracidade,
+        system_prompt: str,
+    ) -> AuditoriaChamadaModelo:
+        mensagens = []
+        for mensagem in resposta.get("messages", []):
+            if hasattr(mensagem, "model_dump"):
+                mensagens.append(mensagem.model_dump(mode="json"))
+            else:
+                mensagens.append(mensagem)
+        input_completo = {
+            "system_prompt": system_prompt,
+            "messages": entrada["messages"],
+            "tools": [
+                {
+                    "name": "consultar_base",
+                    "parameters": ConsultaSQL.model_json_schema(),
+                }
+            ],
+            "response_format": ResultadoVeracidade.model_json_schema(),
+        }
+        return AuditoriaChamadaModelo(
+            input=input_completo,
+            output={
+                "mensagens_agente": mensagens,
+                "estruturada": resultado.model_dump(mode="json"),
+            },
+        )
 
     @staticmethod
     def _obter_resultado(resposta: dict) -> ResultadoVeracidade:
@@ -117,118 +209,72 @@ class AgenteVeracidade:
             raise RuntimeError("o agente de veracidade não consultou a base canônica")
         return ResultadoVeracidade.model_validate(resposta["structured_response"])
 
-    def buscar(self, consulta: ConsultaCanonica) -> list[RegistroCanonico]:
-        termos = self._montar_consulta_fts(consulta)
-        if not termos:
-            return []
-        return self._executar_consulta(termos, consulta.tipo)
+    def _consultar_base(self, sql: str) -> str:
+        consulta = sql.strip().removesuffix(";")
+        if ";" in consulta or not consulta.casefold().startswith(("select", "with")):
+            return _erro_sql("a ferramenta aceita uma única consulta SELECT", consulta)
 
-    def _buscar_para_agente(
-        self,
-        tipo: TipoCitacao,
-        classe_processual: str | None = None,
-        numero: str | None = None,
-        tribunal: str | None = None,
-        uf: str | None = None,
-        ano: int | None = None,
-        relator: str | None = None,
-        dispositivo: str | None = None,
-    ) -> str:
-        consulta = ConsultaCanonica(
-            tipo=tipo,
-            classe_processual=classe_processual,
-            numero=numero,
-            tribunal=tribunal,
-            uf=uf,
-            ano=ano,
-            relator=relator,
-            dispositivo=dispositivo,
-        )
-        registros = self.buscar(consulta)
+        try:
+            uri = f"file:{self._database}?mode=ro"
+            with sqlite3.connect(uri, uri=True) as conexao:
+                conexao.row_factory = sqlite3.Row
+                conexao.execute("PRAGMA query_only = ON")
+                cursor = conexao.execute(consulta)
+                colunas = [item[0] for item in cursor.description or []]
+                linhas = cursor.fetchmany(10)
+        except sqlite3.Error as erro:
+            return _erro_sql(str(erro), consulta)
+
         dados = []
-        for registro in registros:
-            item = registro.model_dump(mode="json")
-            item["texto"] = registro.texto[:3000]
+        for linha in linhas:
+            item = dict(zip(colunas, linha, strict=True))
+            if isinstance(item.get("texto"), str):
+                item["texto"] = item["texto"][:3000]
             dados.append(item)
-        return json.dumps(dados, ensure_ascii=False)
-
-    def _montar_consulta_fts(self, consulta: ConsultaCanonica) -> str:
-        valores = (
-            consulta.classe_processual,
-            consulta.numero,
-            consulta.tribunal,
-            consulta.uf,
-            str(consulta.ano) if consulta.ano else None,
-            consulta.relator,
-            consulta.dispositivo,
-        )
-        tokens = []
-        for valor in valores:
-            if not valor:
-                continue
-            for token in re.findall(r"\w+", valor, flags=re.UNICODE):
-                if len(token) > 1 and token.casefold() not in {
-                    t.casefold() for t in tokens
-                }:
-                    tokens.append(token)
-        return " OR ".join(f'"{token}"' for token in tokens)
-
-    def _executar_consulta(
-        self,
-        termos: str,
-        tipo: TipoCitacao,
-    ) -> list[RegistroCanonico]:
-        sql = """
-            SELECT d.documento_id, d.id, d.tribunal, d.ano, d.relator,
-                   d.natureza, d.tipo, d.texto
-              FROM documentos_fts AS f
-              JOIN documentos AS d ON d.rowid = f.rowid
-             WHERE documentos_fts MATCH ? AND d.tipo = ?
-             ORDER BY bm25(documentos_fts)
-             LIMIT 10
-        """
-        with sqlite3.connect(self._database) as conexao:
-            linhas = conexao.execute(sql, (termos, tipo.value)).fetchall()
-        return [
-            RegistroCanonico(
-                documento_id=linha[0],
-                id_canonico=linha[1],
-                tribunal=linha[2],
-                ano=linha[3],
-                relator=linha[4],
-                natureza=linha[5],
-                tipo=linha[6],
-                texto=linha[7],
-            )
-            for linha in linhas
-        ]
+        return json.dumps(dados, ensure_ascii=False, default=str)
 
 
-def _ler_jsons(caminho: Path) -> list[DocumentoCompletude]:
-    arquivos = sorted(caminho.glob("*.json"))
+def _erro_sql(mensagem: str, sql: str) -> str:
+    return json.dumps(
+        {"erro_sql": mensagem, "sql": sql, "instrucao": "corrija e tente novamente"},
+        ensure_ascii=False,
+    )
+
+
+def _listar_jsons(caminho: Path) -> list[Path]:
+    arquivos = sorted(
+        arquivo for arquivo in caminho.glob("*.json") if arquivo.name != "manifest.json"
+    )
     if not arquivos:
         raise ValueError(f"nenhum arquivo JSON encontrado em {caminho}")
-    documentos = []
-    for arquivo in arquivos:
-        try:
-            documentos.append(
-                DocumentoCompletude.model_validate_json(
-                    arquivo.read_text(encoding="utf-8")
-                )
-            )
-        except ValueError as erro:
-            raise ValueError(f"{arquivo}: {erro}") from erro
-    return documentos
+    return arquivos
 
 
-def _escrever_jsons(documentos: list[DocumentoClassificado], destino: Path) -> None:
-    destino.mkdir(parents=True, exist_ok=True)
-    for documento in documentos:
-        caminho = destino / f"{documento.documento_id}.json"
-        caminho.write_text(
-            documento.model_dump_json(indent=2, exclude_none=True) + "\n",
-            encoding="utf-8",
+def _ler_documento(arquivo: Path) -> DocumentoCompletude:
+    try:
+        return DocumentoCompletude.model_validate_json(
+            arquivo.read_text(encoding="utf-8")
         )
+    except ValueError as erro:
+        raise ValueError(f"{arquivo}: {erro}") from erro
+
+
+def _escrever_json(documento: DocumentoClassificado, destino: Path) -> None:
+    destino.mkdir(parents=True, exist_ok=True)
+    caminho = destino / f"{documento.documento_id}.json"
+    temporario = caminho.with_suffix(".json.tmp")
+    temporario.write_text(
+        documento.model_dump_json(indent=2) + "\n",
+        encoding="utf-8",
+    )
+    temporario.replace(caminho)
+
+
+def _resultado_incompleto() -> ResultadoVeracidade:
+    return ResultadoVeracidade(
+        classificacao=Classificacao.INCOMPLETA,
+        justificativa="Citação sem identificador pesquisável.",
+    )
 
 
 def executar_veracidade(
@@ -236,21 +282,22 @@ def executar_veracidade(
     output_file: Path,
     classificador: ClassificadorVeracidade,
 ) -> None:
-    documentos = _ler_jsons(input_file)
-    total = sum(len(documento.candidatos) for documento in documentos)
-    saida = []
-    with tqdm(total=total, desc="Verificando citações") as progresso:
-        for documento in documentos:
+    arquivos = _listar_jsons(input_file)
+    with tqdm(
+        total=len(arquivos), desc="Verificando citações", unit="documento"
+    ) as progresso:
+        for arquivo in arquivos:
+            documento = _ler_documento(arquivo)
             candidatos = []
+            chamadas = []
             for analisado in documento.candidatos:
                 if analisado.completude.completa:
-                    assert analisado.completude.consulta is not None
-                    resultado = classificador.classificar(analisado.completude.consulta)
-                else:
-                    resultado = ResultadoVeracidade(
-                        classificacao=Classificacao.INCOMPLETA,
-                        justificativa=analisado.completude.justificativa,
+                    resultado, chamada = classificador.classificar_auditada(
+                        analisado.candidato
                     )
+                    chamadas.append(chamada)
+                else:
+                    resultado = _resultado_incompleto()
                 candidatos.append(
                     CandidatoClassificado(
                         candidato=analisado.candidato,
@@ -258,15 +305,16 @@ def executar_veracidade(
                         veracidade=resultado,
                     )
                 )
-                progresso.update()
-            saida.append(
+            _escrever_json(
                 DocumentoClassificado(
                     documento_id=documento.documento_id,
                     texto=documento.texto,
                     candidatos=candidatos,
-                )
+                    chamadas_modelo=chamadas,
+                ),
+                output_file,
             )
-    _escrever_jsons(saida, output_file)
+            progresso.update()
 
 
 async def executar_veracidade_async(
@@ -275,53 +323,60 @@ async def executar_veracidade_async(
     classificador: ClassificadorVeracidadeAsync,
     max_concurrency: int,
 ) -> None:
-    documentos = _ler_jsons(input_file)
-    total = sum(len(documento.candidatos) for documento in documentos)
+    arquivos = _listar_jsons(input_file)
     semaforo = asyncio.Semaphore(max_concurrency)
-    progresso = tqdm(total=total, desc="Verificando citações")
+    progresso = tqdm(total=len(arquivos), desc="Verificando citações", unit="documento")
 
-    async def processar(documento: DocumentoCompletude) -> DocumentoClassificado:
+    async def processar(arquivo: Path) -> None:
+        documento = _ler_documento(arquivo)
+
         async def classificar(
             analisado: CandidatoAnalisado,
-        ) -> CandidatoClassificado:
+        ) -> tuple[CandidatoClassificado, AuditoriaChamadaModelo | None]:
             if analisado.completude.completa:
-                assert analisado.completude.consulta is not None
                 async with semaforo:
-                    resultado = await classificador.classificar_async(
-                        analisado.completude.consulta
+                    (
+                        resultado,
+                        auditoria,
+                    ) = await classificador.classificar_auditada_async(
+                        analisado.candidato
                     )
             else:
-                resultado = ResultadoVeracidade(
-                    classificacao=Classificacao.INCOMPLETA,
-                    justificativa=analisado.completude.justificativa,
-                )
-            progresso.update()
-            return CandidatoClassificado(
-                candidato=analisado.candidato,
-                completude=analisado.completude,
-                veracidade=resultado,
+                auditoria = None
+                resultado = _resultado_incompleto()
+            return (
+                CandidatoClassificado(
+                    candidato=analisado.candidato,
+                    completude=analisado.completude,
+                    veracidade=resultado,
+                ),
+                auditoria,
             )
 
-        candidatos = await asyncio.gather(
+        resultados = await asyncio.gather(
             *(classificar(analisado) for analisado in documento.candidatos)
         )
-        return DocumentoClassificado(
-            documento_id=documento.documento_id,
-            texto=documento.texto,
-            candidatos=candidatos,
+        _escrever_json(
+            DocumentoClassificado(
+                documento_id=documento.documento_id,
+                texto=documento.texto,
+                candidatos=[item[0] for item in resultados],
+                chamadas_modelo=[item[1] for item in resultados if item[1] is not None],
+            ),
+            output_file,
         )
+        progresso.update()
 
     try:
-        saida = await asyncio.gather(
-            *(processar(documento) for documento in documentos)
-        )
+        await asyncio.gather(*(processar(arquivo) for arquivo in arquivos))
     finally:
         progresso.close()
-    _escrever_jsons(saida, output_file)
 
 
 def materializar(entrada: Path, pasta_saida: Path) -> None:
-    arquivos = sorted(entrada.glob("*.json"))
+    arquivos = sorted(
+        arquivo for arquivo in entrada.glob("*.json") if arquivo.name != "manifest.json"
+    )
     if not arquivos:
         raise ValueError(f"nenhum arquivo JSON encontrado em {entrada}")
     pasta_saida.mkdir(parents=True, exist_ok=True)
@@ -331,6 +386,8 @@ def materializar(entrada: Path, pasta_saida: Path) -> None:
         )
         citacoes = []
         for item in documento.candidatos:
+            if item.candidato.inicio is None or item.candidato.fim is None:
+                continue
             resultado = item.veracidade
             resolucao = None
             if resultado.classificacao == Classificacao.REAL:
@@ -363,6 +420,7 @@ def main() -> None:
     entrada = config.workdir / "02-completeness"
     destino = config.workdir / "03-veracity"
     etapa = config.veracity
+    escrever_manifesto_etapa(destino, "veracity", etapa)
     agente = AgenteVeracidade(
         criar_modelo_veracidade(etapa),
         config.database,
