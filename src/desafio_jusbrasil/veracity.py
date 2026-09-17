@@ -1,17 +1,15 @@
-"""Etapa 3: verifica citações com um agente LangChain e a base SQLite."""
+"""Etapa 3: extrai chaves de busca e verifica citações na base SQLite."""
 
 from __future__ import annotations
 
 import asyncio
-import json
 import sqlite3
 from pathlib import Path
+from typing import Any
 
 from dotenv import load_dotenv
-from langchain.agents import create_agent
-from langchain_core.language_models.chat_models import BaseChatModel
-from langchain_core.tools import StructuredTool
-from langchain_openai import ChatOpenAI
+from openai import AsyncOpenAI, OpenAI, omit
+from openai.types.chat import ChatCompletionMessageParam
 from tqdm import tqdm
 
 from .contracts import (
@@ -22,7 +20,8 @@ from .contracts import (
     Classificacao,
     ClassificadorVeracidade,
     ClassificadorVeracidadeAsync,
-    ConsultaSQL,
+    ConsultaJurisprudencia,
+    ConsultaLegislacao,
     DocumentoClassificado,
     DocumentoCompletude,
     DocumentoPredito,
@@ -35,210 +34,193 @@ from .contracts import (
     escrever_manifesto_etapa,
 )
 
-_SCHEMA_SQL = """Schema disponível:
-CREATE TABLE documentos (
-  documento_id TEXT PRIMARY KEY,
-  id INTEGER NOT NULL UNIQUE,
-  tribunal TEXT,
-  ano INTEGER,
-  relator TEXT,
-  natureza TEXT NOT NULL, -- acordao, sumula ou dispositivo
-  tipo TEXT NOT NULL,     -- jurisprudencia ou lei
-  texto TEXT NOT NULL,
-  texto_len INTEGER NOT NULL
-);
-CREATE VIRTUAL TABLE documentos_fts USING fts5(texto, content='documentos',
-content_rowid='rowid');"""
+_PROMPT_JURISPRUDENCIA = """Extraia de uma citação de jurisprudência brasileira os dados necessários
+para uma única consulta SQLite FTS5. Não escreva SQL e não avalie se a citação é
+verdadeira.
 
-_REGRAS_RESULTADO = """A consulta deve ser somente leitura e pode ser executada várias vezes. Em MATCH,
-remova ou coloque entre aspas caracteres especiais como barras e hífens. Se a
-ferramenta retornar erro_sql, corrija o SQL e tente novamente antes de responder.
-Não classifique como inventada após uma única consulta vazia. Use documentos.id
-como id_canonico. Classifique como real somente quando exatamente um registro
-corresponder claramente ao trecho. Classifique como inventada somente após esgotar
-buscas alternativas. Se os resultados permanecerem ambíguos, classifique como
-incompleta. Nunca invente id_canonico. Baseie a justificativa nos resultados SQL
-e retorne null em confianca."""
+Em valores_fts, retorne partes distintivas que devem aparecer simultaneamente no
+documento, já normalizadas sem pontuação problemática para FTS5. Preserve como um
+único valor os números compostos, com seus grupos separados por espaços. Inclua a
+UF quando ela fizer parte do identificador. Para súmulas e temas, inclua sua
+denominação e número. Não inclua palavras genéricas nem crie variações alternativas.
 
-_PROMPT_JURISPRUDENCIA = f"""Você verifica uma citação de jurisprudência contra uma base SQLite fechada.
-Receba o trecho original, escreva o SQL que considerar adequado e sempre execute
-a ferramenta consultar_base antes de responder.
+Defina natureza como acordao para processos e recursos ou sumula para súmulas.
+Extraia tribunal, ano do julgamento e relator somente quando estiverem explícitos.
+O ano dentro de um número processual não é o ano do julgamento."""
 
-{_SCHEMA_SQL}
+_PROMPT_LEI = """Extraia de uma citação de legislação brasileira os dados necessários para
+uma única consulta SQLite FTS5. Não escreva SQL e não avalie se a citação é
+verdadeira.
 
-Priorize natureza='acordao' para processos e recursos e natureza='sumula' para
-súmulas. Tente o identificador literal, suas partes distintivas e FTS5. Tolere
-abreviações, espaços, pontos, hífens, barras e ruído de OCR. Teste números com e
-sem pontuação e separadores. Use tribunal e ano apenas como filtros auxiliares.
-
-{_REGRAS_RESULTADO}"""
-
-_PROMPT_LEI = f"""Você verifica uma citação de legislação contra uma base SQLite fechada.
-Receba o trecho original, escreva o SQL que considerar adequado e sempre execute
-a ferramenta consultar_base antes de responder.
-
-{_SCHEMA_SQL}
-
-Priorize exclusivamente registros com natureza='dispositivo'. Procure o número do
-dispositivo junto ao diploma legal e tente variações de nome, abreviação,
-pontuação, espaços e ruído de OCR. Acórdãos que apenas mencionam o dispositivo não
-são o registro canônico da lei.
-
-{_REGRAS_RESULTADO}"""
+Em valores_fts, retorne partes distintivas que devem aparecer simultaneamente no
+dispositivo, já normalizadas sem pontuação problemática para FTS5. Inclua o número
+do artigo ou dispositivo e o diploma legal identificável. Inclua inciso, parágrafo
+ou alínea apenas quando ajudarem a individualizar o dispositivo. Para diplomas
+abreviados como CPC, CF e CLT, não inclua a sigla nem uma expansão incerta; use o
+número da lei somente se ele estiver explícito no trecho. Não crie variações
+alternativas."""
 
 
 def _prompt_veracidade(tipo: TipoCitacao) -> str:
     return _PROMPT_JURISPRUDENCIA if tipo == TipoCitacao.JURISPRUDENCIA else _PROMPT_LEI
 
 
-def criar_modelo_veracidade(config: ModelConfig) -> BaseChatModel:
-    return ChatOpenAI(
-        model=config.model,
-        base_url=config.base_url,
-        temperature=config.temperature,
-        top_p=config.top_p,
-        reasoning_effort=config.reasoning_effort,
-        extra_body={"top_k": config.top_k} if config.top_k is not None else None,
+def _contrato_consulta(
+    tipo: TipoCitacao,
+) -> type[ConsultaJurisprudencia | ConsultaLegislacao]:
+    return (
+        ConsultaJurisprudencia
+        if tipo == TipoCitacao.JURISPRUDENCIA
+        else ConsultaLegislacao
     )
 
 
-class AgenteVeracidade:
-    """Agente com uma única ferramenta de consulta à base canônica."""
+class VerificadorVeracidade:
+    """Extrai uma consulta estruturada e a executa deterministicamente."""
 
-    def __init__(self, modelo: BaseChatModel, database: Path) -> None:
+    def __init__(
+        self,
+        cliente: OpenAI | AsyncOpenAI,
+        config: ModelConfig,
+        database: Path,
+    ) -> None:
+        self._cliente = cliente
+        self._config = config
         self._database = database
-        ferramenta = StructuredTool.from_function(
-            func=self._consultar_base,
-            name="consultar_base",
-            description=(
-                "Executa uma consulta SQL somente leitura na base canônica e "
-                "retorna no máximo 10 registros."
-            ),
-            args_schema=ConsultaSQL,
-        )
-        self._agents = {
-            tipo: create_agent(
-                model=modelo,
-                tools=[ferramenta],
-                system_prompt=_prompt_veracidade(tipo),
-                response_format=ResultadoVeracidade,
-            )
-            for tipo in TipoCitacao
-        }
 
     def classificar_auditada(
         self,
         candidato: CandidatoCitacao,
     ) -> tuple[ResultadoVeracidade, AuditoriaChamadaModelo]:
-        entrada = self._entrada(candidato)
-        resposta = self._agents[candidato.tipo].invoke(entrada)
-        resultado = self._obter_resultado(resposta)
-        return resultado, self._auditoria(
-            entrada,
-            resposta,
-            resultado,
-            _prompt_veracidade(candidato.tipo),
-        )
+        if not isinstance(self._cliente, OpenAI):
+            raise TypeError("classificar_auditada() exige cliente síncrono")
+        requisicao = self._requisicao(candidato)
+        resposta = self._cliente.chat.completions.parse(**requisicao)
+        return self._finalizar(requisicao, resposta, candidato.tipo)
 
     async def classificar_auditada_async(
         self,
         candidato: CandidatoCitacao,
     ) -> tuple[ResultadoVeracidade, AuditoriaChamadaModelo]:
-        entrada = self._entrada(candidato)
-        resposta = await self._agents[candidato.tipo].ainvoke(entrada)
-        resultado = self._obter_resultado(resposta)
-        return resultado, self._auditoria(
-            entrada,
-            resposta,
-            resultado,
-            _prompt_veracidade(candidato.tipo),
-        )
+        if not isinstance(self._cliente, AsyncOpenAI):
+            raise TypeError("classificar_auditada_async() exige cliente assíncrono")
+        requisicao = self._requisicao(candidato)
+        resposta = await self._cliente.chat.completions.parse(**requisicao)
+        return self._finalizar(requisicao, resposta, candidato.tipo)
 
     @staticmethod
-    def _entrada(candidato: CandidatoCitacao) -> dict:
-        return {
-            "messages": [
-                {
-                    "role": "user",
-                    "content": (
-                        f"Tipo definido pelo extractor: {candidato.tipo.value}\n"
-                        f"Trecho original:\n{candidato.trecho}"
-                    ),
-                }
-            ]
-        }
+    def _mensagens(candidato: CandidatoCitacao) -> list[ChatCompletionMessageParam]:
+        return [
+            {"role": "system", "content": _prompt_veracidade(candidato.tipo)},
+            {"role": "user", "content": f"Trecho original:\n{candidato.trecho}"},
+        ]
 
-    @staticmethod
-    def _auditoria(
-        entrada: dict,
-        resposta: dict,
-        resultado: ResultadoVeracidade,
-        system_prompt: str,
-    ) -> AuditoriaChamadaModelo:
-        mensagens = []
-        for mensagem in resposta.get("messages", []):
-            if hasattr(mensagem, "model_dump"):
-                mensagens.append(mensagem.model_dump(mode="json"))
-            else:
-                mensagens.append(mensagem)
-        input_completo = {
-            "system_prompt": system_prompt,
-            "messages": entrada["messages"],
-            "tools": [
-                {
-                    "name": "consultar_base",
-                    "parameters": ConsultaSQL.model_json_schema(),
-                }
-            ],
-            "response_format": ResultadoVeracidade.model_json_schema(),
+    def _requisicao(self, candidato: CandidatoCitacao) -> dict[str, Any]:
+        requisicao: dict[str, Any] = {
+            "model": self._config.model,
+            "temperature": self._config.temperature
+            if self._config.temperature is not None
+            else omit,
+            "top_p": self._config.top_p if self._config.top_p is not None else omit,
+            "messages": self._mensagens(candidato),
+            "response_format": _contrato_consulta(candidato.tipo),
+            "reasoning_effort": self._config.reasoning_effort
+            if self._config.reasoning_effort is not None
+            else omit,
         }
-        return AuditoriaChamadaModelo(
-            input=input_completo,
+        if self._config.top_k is not None:
+            requisicao["extra_body"] = {"top_k": self._config.top_k}
+        return requisicao
+
+    def _finalizar(
+        self,
+        requisicao: dict[str, Any],
+        resposta: Any,
+        tipo: TipoCitacao,
+    ) -> tuple[ResultadoVeracidade, AuditoriaChamadaModelo]:
+        consulta = resposta.choices[0].message.parsed
+        if consulta is None:
+            raise RuntimeError("o modelo não retornou uma consulta estruturada")
+        registros, sql, parametros = self._consultar_base(consulta)
+        resultado = self._classificar(registros)
+        entrada = {
+            nome: valor for nome, valor in requisicao.items() if valor is not omit
+        }
+        entrada["response_format"] = _contrato_consulta(tipo).model_json_schema()
+        auditoria = AuditoriaChamadaModelo(
+            input=entrada,
             output={
-                "mensagens_agente": mensagens,
-                "estruturada": resultado.model_dump(mode="json"),
+                "bruta": resposta.model_dump(
+                    mode="json",
+                    exclude={"choices": {"__all__": {"message": {"parsed"}}}},
+                ),
+                "estruturada": consulta.model_dump(mode="json"),
+                "sql": sql,
+                "parametros": parametros,
+                "registros": registros,
+                "resultado": resultado.model_dump(mode="json"),
             },
         )
+        return resultado, auditoria
+
+    def _consultar_base(
+        self,
+        consulta: ConsultaJurisprudencia | ConsultaLegislacao,
+    ) -> tuple[list[dict[str, Any]], str, list[Any]]:
+        valores = [valor.strip() for valor in consulta.valores_fts if valor.strip()]
+        if not valores:
+            raise ValueError("valores_fts deve conter ao menos um valor não vazio")
+        expressao_fts = " AND ".join(
+            f'"{valor.replace(chr(34), chr(34) * 2)}"' for valor in valores
+        )
+        filtros = ["documentos_fts MATCH ?", "d.tipo = ?", "d.natureza = ?"]
+        if isinstance(consulta, ConsultaJurisprudencia):
+            parametros: list[Any] = [
+                expressao_fts,
+                TipoCitacao.JURISPRUDENCIA.value,
+                consulta.natureza,
+            ]
+            if consulta.tribunal is not None:
+                filtros.append("d.tribunal = ? COLLATE NOCASE")
+                parametros.append(consulta.tribunal)
+            if consulta.relator is not None:
+                filtros.append("d.relator LIKE ? COLLATE NOCASE")
+                parametros.append(f"%{consulta.relator}%")
+            if consulta.ano is not None:
+                filtros.append("d.ano = ?")
+                parametros.append(consulta.ano)
+        else:
+            parametros = [expressao_fts, TipoCitacao.LEI.value, "dispositivo"]
+        sql = (
+            "SELECT d.id, d.documento_id FROM documentos_fts "
+            "JOIN documentos AS d ON d.rowid = documentos_fts.rowid WHERE "
+            + " AND ".join(filtros)
+            + " LIMIT 2"
+        )
+        uri = f"file:{self._database}?mode=ro"
+        with sqlite3.connect(uri, uri=True) as conexao:
+            conexao.row_factory = sqlite3.Row
+            conexao.execute("PRAGMA query_only = ON")
+            linhas = conexao.execute(sql, parametros).fetchall()
+        return [dict(linha) for linha in linhas], sql, parametros
 
     @staticmethod
-    def _obter_resultado(resposta: dict) -> ResultadoVeracidade:
-        if not any(
-            getattr(mensagem, "type", None) == "tool"
-            for mensagem in resposta.get("messages", [])
-        ):
-            raise RuntimeError("o agente de veracidade não consultou a base canônica")
-        return ResultadoVeracidade.model_validate(resposta["structured_response"])
-
-    def _consultar_base(self, sql: str) -> str:
-        consulta = sql.strip().removesuffix(";")
-        if ";" in consulta or not consulta.casefold().startswith(("select", "with")):
-            return _erro_sql("a ferramenta aceita uma única consulta SELECT", consulta)
-
-        try:
-            uri = f"file:{self._database}?mode=ro"
-            with sqlite3.connect(uri, uri=True) as conexao:
-                conexao.row_factory = sqlite3.Row
-                conexao.execute("PRAGMA query_only = ON")
-                cursor = conexao.execute(consulta)
-                colunas = [item[0] for item in cursor.description or []]
-                linhas = cursor.fetchmany(10)
-        except sqlite3.Error as erro:
-            return _erro_sql(str(erro), consulta)
-
-        dados = []
-        for linha in linhas:
-            item = dict(zip(colunas, linha, strict=True))
-            if isinstance(item.get("texto"), str):
-                item["texto"] = item["texto"][:3000]
-            dados.append(item)
-        return json.dumps(dados, ensure_ascii=False, default=str)
-
-
-def _erro_sql(mensagem: str, sql: str) -> str:
-    return json.dumps(
-        {"erro_sql": mensagem, "sql": sql, "instrucao": "corrija e tente novamente"},
-        ensure_ascii=False,
-    )
+    def _classificar(registros: list[dict[str, Any]]) -> ResultadoVeracidade:
+        if not registros:
+            return ResultadoVeracidade(
+                classificacao=Classificacao.INVENTADA,
+                justificativa="A consulta estruturada não encontrou registro canônico.",
+            )
+        if len(registros) > 1:
+            return ResultadoVeracidade(
+                classificacao=Classificacao.INCOMPLETA,
+                justificativa="A consulta estruturada encontrou mais de um registro canônico.",
+            )
+        return ResultadoVeracidade(
+            classificacao=Classificacao.REAL,
+            id_canonico=registros[0]["id"],
+            justificativa="A consulta estruturada encontrou um único registro canônico.",
+        )
 
 
 def _listar_jsons(caminho: Path) -> list[Path]:
@@ -414,6 +396,21 @@ def materializar(entrada: Path, pasta_saida: Path) -> None:
         )
 
 
+async def _executar_veracidade_async(
+    config: PipelineConfig,
+    entrada: Path,
+    destino: Path,
+) -> None:
+    etapa = config.veracity
+    async with AsyncOpenAI(base_url=etapa.base_url) as cliente:
+        await executar_veracidade_async(
+            entrada,
+            destino,
+            VerificadorVeracidade(cliente, etapa, config.database),
+            etapa.max_concurrency,
+        )
+
+
 def main() -> None:
     load_dotenv()
     config = PipelineConfig.from_yaml(Path("pipeline.yaml"))
@@ -421,21 +418,18 @@ def main() -> None:
     destino = config.workdir / "03-veracity"
     etapa = config.veracity
     escrever_manifesto_etapa(destino, "veracity", etapa)
-    agente = AgenteVeracidade(
-        criar_modelo_veracidade(etapa),
-        config.database,
-    )
     if etapa.async_requests:
-        asyncio.run(
-            executar_veracidade_async(
-                entrada,
-                destino,
-                agente,
-                etapa.max_concurrency,
-            )
-        )
+        asyncio.run(_executar_veracidade_async(config, entrada, destino))
     else:
-        executar_veracidade(entrada, destino, agente)
+        executar_veracidade(
+            entrada,
+            destino,
+            VerificadorVeracidade(
+                OpenAI(base_url=etapa.base_url),
+                etapa,
+                config.database,
+            ),
+        )
     print(f"{destino}: veracidade concluída")
 
     materializar(destino, config.workdir / "predictions")
