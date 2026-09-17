@@ -13,6 +13,7 @@ from .contracts import (
     ClassificadorVeracidade,
     ExtratorCandidatos,
     PipelineConfig,
+    escrever_manifesto_etapa,
 )
 from .extractor import AgenteExtrator, executar_extracao
 from .veracity import (
@@ -49,6 +50,15 @@ class Orquestrador:
 def main() -> None:
     load_dotenv()
     config = PipelineConfig.from_yaml(Path("pipeline.yaml"))
+    escrever_manifesto_etapa(
+        config.workdir / "01-extraction", "extractor", config.extractor
+    )
+    escrever_manifesto_etapa(
+        config.workdir / "02-completeness", "completeness", config.completeness
+    )
+    escrever_manifesto_etapa(
+        config.workdir / "03-veracity", "veracity", config.veracity
+    )
     orquestrador = Orquestrador(
         AgenteExtrator(
             OpenAI(base_url=config.extractor.base_url),

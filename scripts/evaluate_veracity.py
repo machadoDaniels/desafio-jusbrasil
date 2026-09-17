@@ -24,7 +24,9 @@ from desafio_jusbrasil.contracts import Classificacao, DocumentoClassificado
 
 
 def _ler(pasta: Path) -> dict[str, DocumentoClassificado]:
-    arquivos = sorted(pasta.glob("*.json"))
+    arquivos = sorted(
+        arquivo for arquivo in pasta.glob("*.json") if arquivo.name != "manifest.json"
+    )
     if not arquivos:
         raise ValueError(f"nenhum JSON encontrado em {pasta}")
     return {
@@ -62,16 +64,21 @@ def main() -> None:
     for documento_id, gold in golds.items():
         pred = preditos.get(documento_id)
         itens = pred.candidatos if pred else []
+        localizados = [
+            item
+            for item in itens
+            if item.candidato.inicio is not None and item.candidato.fim is not None
+        ]
         pares, _, _ = _casar(
             [item.candidato.model_dump() for item in gold.candidatos],
-            [item.candidato.model_dump() for item in itens],
+            [item.candidato.model_dump() for item in localizados],
         )
         casados += len(pares)
         total_gold += len(gold.candidatos)
-        total_predito += len(itens)
+        total_predito += len(localizados)
         for gi, pi in pares:
             esperado = gold.candidatos[gi].veracidade
-            obtido = itens[pi].veracidade
+            obtido = localizados[pi].veracidade
             classe_correta = esperado.classificacao == obtido.classificacao
             classes_corretas += classe_correta
             if classe_correta and esperado.classificacao == Classificacao.REAL:

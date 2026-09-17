@@ -27,7 +27,6 @@ from desafio_jusbrasil.contracts import (
     CandidatoCitacao,
     CandidatoClassificado,
     Classificacao,
-    ConsultaCanonica,
     DocumentoClassificado,
     DocumentoCompletude,
     DocumentoExtraido,
@@ -86,18 +85,7 @@ def gerar(dataset: Path, destino: Path) -> None:
         for linha, candidato in zip(linhas.itertuples(), candidatos, strict=True):
             classificacao = Classificacao(linha.classificacao)
             completa = classificacao != Classificacao.INCOMPLETA
-            completude = ResultadoCompletude(
-                completa=completa,
-                consulta=(
-                    ConsultaCanonica(
-                        tipo=candidato.tipo,
-                        dispositivo=candidato.trecho,
-                    )
-                    if completa
-                    else None
-                ),
-                justificativa="Derivado do goldenset.",
-            )
+            completude = ResultadoCompletude(completa=completa)
             analisados.append(
                 CandidatoAnalisado(candidato=candidato, completude=completude)
             )

@@ -24,7 +24,9 @@ from desafio_jusbrasil.contracts import DocumentoExtraido
 
 
 def _ler(pasta: Path) -> dict[str, DocumentoExtraido]:
-    arquivos = sorted(pasta.glob("*.json"))
+    arquivos = sorted(
+        arquivo for arquivo in pasta.glob("*.json") if arquivo.name != "manifest.json"
+    )
     if not arquivos:
         raise ValueError(f"nenhum JSON encontrado em {pasta}")
     return {
@@ -61,15 +63,20 @@ def main() -> None:
     for documento_id, gold in golds.items():
         pred = preditos.get(documento_id)
         candidatos = pred.candidatos if pred else []
+        localizados = [
+            item
+            for item in candidatos
+            if item.inicio is not None and item.fim is not None
+        ]
         pares, _, _ = _casar(
             [item.model_dump() for item in gold.candidatos],
-            [item.model_dump() for item in candidatos],
+            [item.model_dump() for item in localizados],
         )
         casados += len(pares)
         total_gold += len(gold.candidatos)
-        total_predito += len(candidatos)
+        total_predito += len(localizados)
         tipos_corretos += sum(
-            gold.candidatos[gi].tipo == candidatos[pi].tipo for gi, pi in pares
+            gold.candidatos[gi].tipo == localizados[pi].tipo for gi, pi in pares
         )
 
     precisao = _dividir(casados, total_predito)

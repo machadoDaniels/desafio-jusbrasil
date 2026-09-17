@@ -48,7 +48,6 @@ workdir: outputs/run-001
 database: desafio-jusbrasil-bracis-2026/desafio1_bracis.db
 
 extractor:
-  provider: openai
   model: gpt-4.1-mini
   base_url: null
   temperature: 0
@@ -57,7 +56,6 @@ extractor:
   max_concurrency: 4
 
 completeness:
-  provider: openai
   model: gpt-4.1-mini
   base_url: null
   temperature: 0
@@ -66,7 +64,6 @@ completeness:
   max_concurrency: 4
 
 veracity:
-  provider: openai
   model: gpt-4.1-mini
   base_url: null
   temperature: 0
@@ -504,7 +501,7 @@ A interface expõe apenas `classificar()`. `buscar()` permanece público por ser
 
 ## Implementação
 
-A busca usa `sqlite3`, mas a decisão é feita por um agente LangChain com uma única ferramenta: `buscar_base_canonica`. Para `provider: gemini`, usa-se a integração nativa `ChatGoogleGenerativeAI`, que preserva thought signatures durante o loop de ferramentas; os demais endpoints OpenAI-compatible usam `ChatOpenAI`.
+A busca usa `sqlite3`, mas a decisão é feita por um agente LangChain com uma única ferramenta SQL. Todos os modelos são acessados por `ChatOpenAI` em endpoints OpenAI-compatible.
 
 Para cada candidato:
 
@@ -726,7 +723,7 @@ dependencies = [
 
 Não adicionar ORM, framework de CLI ou biblioteca específica para checkpoints. `json`, `pathlib`, `sqlite3` e PyYAML são suficientes.
 
-A chave deve vir do ambiente. Para usar Gemini, configure `base_url` no YAML e forneça a chave Gemini em `OPENAI_API_KEY`:
+A chave deve vir do ambiente. Para qualquer endpoint OpenAI-compatible protegido, configure `base_url` no YAML e forneça a chave em `OPENAI_API_KEY`:
 
 ```bash
 OPENAI_API_KEY="$(security find-generic-password \

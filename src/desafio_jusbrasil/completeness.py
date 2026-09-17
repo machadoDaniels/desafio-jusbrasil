@@ -9,6 +9,7 @@ from typing import Any
 from dotenv import load_dotenv
 from openai import AsyncOpenAI, OpenAI, omit
 from openai.types.chat import ChatCompletionMessageParam
+from pydantic import ValidationError
 from tqdm import tqdm
 
 from .contracts import (
@@ -22,14 +23,37 @@ from .contracts import (
     ModelConfig,
     PipelineConfig,
     ResultadoCompletude,
+    TipoCitacao,
     escrever_manifesto_etapa,
 )
 
-_SYSTEM_PROMPT = """Você avalia citações jurídicas brasileiras.
-Decida se o trecho e seu contexto fornecem informação suficiente para formular
-uma consulta específica a uma base canônica. Extraia somente dados sustentados
-pelo texto. Não decida se a citação existe. Uma descrição vaga, sem identificador
-suficiente, é incompleta. Se completa=false, consulta deve ser null."""
+_MAX_TENTATIVAS_PARSE = 3
+
+_PROMPT_JURISPRUDENCIA = """Você avalia a completude de uma citação de jurisprudência brasileira.
+Retorne somente o campo booleano completa. Não formule consultas e não avalie
+veracidade.
+
+A citação é completa quando possui identificador numerado pesquisável: número de
+processo ou recurso, número de súmula ou número de tema. Classe processual,
+tribunal, ano e relator sem esse número não individualizam o precedente. O ano
+isolado não é número de processo.
+
+Tolere espaços, pontuação irregular e trocas reconhecíveis entre letras e dígitos
+causadas por OCR. Use o contexto somente para unir partes da mesma referência;
+nunca use o número de outra citação próxima. Uma referência numerada permanece
+completa mesmo que seja inexistente ou juridicamente incorreta."""
+
+_PROMPT_LEI = """Você avalia a completude de uma citação de legislação brasileira.
+Retorne somente o campo booleano completa. Não formule consultas e não avalie
+veracidade.
+
+A citação é completa quando possui um dispositivo numerado e um diploma legal
+identificável. Menção genérica à legislação ou artigo sem diploma identificável é
+incompleta. Tolere espaços, pontuação irregular e trocas reconhecíveis entre
+letras e dígitos causadas por OCR. Use o contexto somente para unir partes da
+mesma referência; nunca use dados de outra citação próxima. Uma referência
+pesquisável permanece completa mesmo que seja inexistente ou juridicamente
+incorreta."""
 
 
 class AgenteCompletude:
@@ -51,9 +75,14 @@ class AgenteCompletude:
         if not isinstance(self._cliente, OpenAI):
             raise TypeError("classificar_auditada() exige cliente síncrono")
         requisicao = self._requisicao(candidato, contexto)
-        resposta = self._cliente.chat.completions.parse(**requisicao)
-        resultado = self._obter_resultado(resposta.choices[0].message.parsed)
-        return resultado, self._auditoria(requisicao, resposta, resultado)
+        for tentativa in range(_MAX_TENTATIVAS_PARSE):
+            try:
+                resposta = self._cliente.chat.completions.parse(**requisicao)
+                return self._finalizar(requisicao, resposta)
+            except ValidationError:
+                if tentativa == _MAX_TENTATIVAS_PARSE - 1:
+                    raise
+        raise AssertionError("tentativas de parse esgotadas")
 
     async def classificar_auditada_async(
         self,
@@ -63,24 +92,30 @@ class AgenteCompletude:
         if not isinstance(self._cliente, AsyncOpenAI):
             raise TypeError("classificar_auditada_async() exige cliente assíncrono")
         requisicao = self._requisicao(candidato, contexto)
-        resposta = await self._cliente.chat.completions.parse(**requisicao)
-        resultado = self._obter_resultado(resposta.choices[0].message.parsed)
-        return resultado, self._auditoria(requisicao, resposta, resultado)
+        for tentativa in range(_MAX_TENTATIVAS_PARSE):
+            try:
+                resposta = await self._cliente.chat.completions.parse(**requisicao)
+                return self._finalizar(requisicao, resposta)
+            except ValidationError:
+                if tentativa == _MAX_TENTATIVAS_PARSE - 1:
+                    raise
+        raise AssertionError("tentativas de parse esgotadas")
 
     @staticmethod
     def _mensagens(
         candidato: CandidatoCitacao,
         contexto: str,
     ) -> list[ChatCompletionMessageParam]:
-        candidato_json = candidato.model_dump_json(
-            exclude={"confianca_extracao", "inicio", "fim"},
-            exclude_none=True,
+        prompt = (
+            _PROMPT_JURISPRUDENCIA
+            if candidato.tipo == TipoCitacao.JURISPRUDENCIA
+            else _PROMPT_LEI
         )
         return [
-            {"role": "system", "content": _SYSTEM_PROMPT},
+            {"role": "system", "content": prompt},
             {
                 "role": "user",
-                "content": f"Candidato:\n{candidato_json}\n\nContexto:\n{contexto}",
+                "content": f"Trecho:\n{candidato.trecho}\n\nContexto:\n{contexto}",
             },
         ]
 
@@ -133,13 +168,16 @@ class AgenteCompletude:
             },
         )
 
-    @staticmethod
-    def _obter_resultado(
-        resultado: ResultadoCompletude | None,
-    ) -> ResultadoCompletude:
+    @classmethod
+    def _finalizar(
+        cls,
+        requisicao: dict,
+        resposta: Any,
+    ) -> tuple[ResultadoCompletude, AuditoriaChamadaModelo]:
+        resultado = resposta.choices[0].message.parsed
         if resultado is None:
             raise RuntimeError("o modelo não retornou uma análise estruturada")
-        return resultado
+        return resultado, cls._auditoria(requisicao, resposta, resultado)
 
 
 def _obter_contexto(

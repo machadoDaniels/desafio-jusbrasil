@@ -1,19 +1,27 @@
+---
+title: Esquema da base canônica Jusbrasil
+---
 erDiagram
     DOCUMENTOS {
-        TEXT documento_id PK
-        INTEGER id UK
-        TEXT tribunal "nullable"
+        TEXT documento_id PK "identificador canônico"
+        INTEGER id UK "doc_id Jusbrasil"
+        TEXT tribunal "nullable; súmulas e acórdãos"
         INTEGER ano "nullable"
         TEXT relator "nullable"
         TEXT natureza "acordao | sumula | dispositivo"
         TEXT tipo "jurisprudencia | lei"
-        TEXT texto
-        INTEGER texto_len
+        TEXT texto "conteúdo integral"
+        INTEGER texto_len "comprimento de texto"
     }
 
     DOCUMENTOS_FTS {
-        INTEGER rowid PK "documentos.rowid"
-        TEXT texto
+        INTEGER rowid PK "espelha DOCUMENTOS.rowid"
+        TEXT texto "FTS5 unicode61; remove acentos"
     }
 
-    DOCUMENTOS ||--|| DOCUMENTOS_FTS : "indice FTS5 (content_rowid = rowid)"
+    DOCUMENTOS ||--|| DOCUMENTOS_FTS : "índice externo FTS5 (content_rowid = rowid)"
+
+    %% Índices SQLite em DOCUMENTOS:
+    %% idx_documentos_tribunal (tribunal)
+    %% idx_documentos_ano (ano)
+    %% idx_documentos_natureza (natureza)
