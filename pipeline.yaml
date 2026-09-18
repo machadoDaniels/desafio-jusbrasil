@@ -24,15 +24,15 @@ completeness:
   max_concurrency: 10
 
 veracity:
-  model: google/gemma-4-26b-a4b-it
-  base_url: https://openrouter.ai/api/v1
+  model: google/gemma-4-26B-A4B-it
+  base_url: http://10.100.0.112:8027/v1
   temperature: null
   top_p: null
   top_k: null
-  reasoning_effort: none
+  reasoning_effort: null
   async_requests: true
   max_concurrency: 10
-
+ 
 
 
 # Ollama: http://127.0.0.1:11434/v1 e reasoning_effort: none

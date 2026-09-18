@@ -144,8 +144,16 @@ class DocumentoCompletude(Contract):
     chamadas_modelo: list[AuditoriaChamadaModelo] = Field(default_factory=list)
 
 
-class ConsultaSQL(Contract):
-    sql: str = Field(min_length=1)
+class ConsultaJurisprudencia(Contract):
+    valores_fts: list[str] = Field(min_length=1)
+    natureza: Literal["acordao", "sumula"]
+    tribunal: str | None = None
+    ano: int | None = None
+    relator: str | None = None
+
+
+class ConsultaLegislacao(Contract):
+    valores_fts: list[str] = Field(min_length=1)
 
 
 class ResultadoVeracidade(Contract):

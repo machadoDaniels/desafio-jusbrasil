@@ -24,11 +24,8 @@ from .contracts import (
     ConsultaLegislacao,
     DocumentoClassificado,
     DocumentoCompletude,
-    DocumentoPredito,
     ModelConfig,
     PipelineConfig,
-    Predicao,
-    Resolucao,
     ResultadoVeracidade,
     TipoCitacao,
     escrever_manifesto_etapa,
@@ -355,47 +352,6 @@ async def executar_veracidade_async(
         progresso.close()
 
 
-def materializar(entrada: Path, pasta_saida: Path) -> None:
-    arquivos = sorted(
-        arquivo for arquivo in entrada.glob("*.json") if arquivo.name != "manifest.json"
-    )
-    if not arquivos:
-        raise ValueError(f"nenhum arquivo JSON encontrado em {entrada}")
-    pasta_saida.mkdir(parents=True, exist_ok=True)
-    for arquivo in tqdm(arquivos, desc="Materializando predições"):
-        documento = DocumentoClassificado.model_validate_json(
-            arquivo.read_text(encoding="utf-8")
-        )
-        citacoes = []
-        for item in documento.candidatos:
-            if item.candidato.inicio is None or item.candidato.fim is None:
-                continue
-            resultado = item.veracidade
-            resolucao = None
-            if resultado.classificacao == Classificacao.REAL:
-                assert resultado.id_canonico is not None
-                resolucao = Resolucao(id_canonico=resultado.id_canonico)
-            citacoes.append(
-                Predicao(
-                    inicio=item.candidato.inicio,
-                    fim=item.candidato.fim,
-                    trecho=item.candidato.trecho,
-                    tipo=item.candidato.tipo,
-                    classificacao=resultado.classificacao,
-                    resolucao=resolucao,
-                    confianca=resultado.confianca,
-                )
-            )
-        predicao = DocumentoPredito(
-            documento_id=documento.documento_id,
-            citacoes=citacoes,
-        )
-        (pasta_saida / arquivo.name).write_text(
-            predicao.model_dump_json(indent=2, exclude_none=True) + "\n",
-            encoding="utf-8",
-        )
-
-
 async def _executar_veracidade_async(
     config: PipelineConfig,
     entrada: Path,
@@ -412,6 +368,8 @@ async def _executar_veracidade_async(
 
 
 def main() -> None:
+    from .orchestrator import materializar
+
     load_dotenv()
     config = PipelineConfig.from_yaml(Path("pipeline.yaml"))
     entrada = config.workdir / "02-completeness"

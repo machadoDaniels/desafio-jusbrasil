@@ -6,22 +6,65 @@ from pathlib import Path
 
 from dotenv import load_dotenv
 from openai import OpenAI
+from tqdm import tqdm
 
 from .completeness import AgenteCompletude, executar_completude
 from .contracts import (
+    Classificacao,
     ClassificadorCompletude,
     ClassificadorVeracidade,
+    DocumentoClassificado,
+    DocumentoPredito,
     ExtratorCandidatos,
     PipelineConfig,
+    Predicao,
+    Resolucao,
     escrever_manifesto_etapa,
 )
 from .extractor import AgenteExtrator, executar_extracao
-from .veracity import (
-    AgenteVeracidade,
-    criar_modelo_veracidade,
-    executar_veracidade,
-    materializar,
-)
+from .veracity import VerificadorVeracidade, executar_veracidade
+
+
+def materializar(entrada: Path, pasta_saida: Path) -> None:
+    arquivos = sorted(
+        arquivo for arquivo in entrada.glob("*.json") if arquivo.name != "manifest.json"
+    )
+    if not arquivos:
+        raise ValueError(f"nenhum arquivo JSON encontrado em {entrada}")
+    pasta_saida.mkdir(parents=True, exist_ok=True)
+    for arquivo in tqdm(arquivos, desc="Materializando predições"):
+        documento = DocumentoClassificado.model_validate_json(
+            arquivo.read_text(encoding="utf-8")
+        )
+        citacoes = []
+        for item in documento.candidatos:
+            candidato = item.candidato
+            if candidato.inicio is None or candidato.fim is None:
+                continue
+            resultado = item.veracidade
+            resolucao = None
+            if resultado.classificacao == Classificacao.REAL:
+                assert resultado.id_canonico is not None
+                resolucao = Resolucao(id_canonico=resultado.id_canonico)
+            citacoes.append(
+                Predicao(
+                    inicio=candidato.inicio,
+                    fim=candidato.fim,
+                    trecho=candidato.trecho,
+                    tipo=candidato.tipo,
+                    classificacao=resultado.classificacao,
+                    resolucao=resolucao,
+                    confianca=resultado.confianca,
+                )
+            )
+        predicao = DocumentoPredito(
+            documento_id=documento.documento_id,
+            citacoes=citacoes,
+        )
+        (pasta_saida / arquivo.name).write_text(
+            predicao.model_dump_json(indent=2, exclude_none=True) + "\n",
+            encoding="utf-8",
+        )
 
 
 class Orquestrador:
@@ -68,8 +111,9 @@ def main() -> None:
             OpenAI(base_url=config.completeness.base_url),
             config.completeness,
         ),
-        AgenteVeracidade(
-            criar_modelo_veracidade(config.veracity),
+        VerificadorVeracidade(
+            OpenAI(base_url=config.veracity.base_url),
+            config.veracity,
             config.database,
         ),
     )

@@ -4,7 +4,7 @@ Pipeline em três etapas para extrair e verificar citações jurídicas:
 
 1. `extractor`: encontra citações e calcula os offsets localmente;
 2. `completeness`: aplica uma regra específica por tipo e retorna somente se a citação é completa;
-3. `veracity`: recebe o trecho original, gera SQL e consulta a base SQLite por meio de um agente LangChain.
+3. `veracity`: extrai do trecho uma consulta estruturada e executa uma busca FTS5 determinística na base SQLite.
 
 ## Configuração
 
@@ -27,7 +27,7 @@ Todos os modelos são acessados por APIs OpenAI-compatible. Para vLLM, Ollama ou
 
 ### Modelo atual
 
-O exemplo usa `google/gemma-4-26B-A4B-it`, um modelo mixture-of-experts com 26 bilhões de parâmetros totais e cerca de 4 bilhões ativos por token. O endpoint configurado atualmente anuncia `max_model_len: 32768` em `/v1/models`. O suporte do vLLM para Gemma 4 inclui saída estruturada, reasoning e tool calling — capacidades usadas pelo pipeline.
+O exemplo usa `google/gemma-4-26B-A4B-it`, um modelo mixture-of-experts com 26 bilhões de parâmetros totais e cerca de 4 bilhões ativos por token. O endpoint configurado atualmente anuncia `max_model_len: 32768` em `/v1/models`. O pipeline usa saída estruturada e, opcionalmente, reasoning.
 
 O limite de 32.768 tokens é do servidor atual, não uma garantia portátil do modelo. Ele pode mudar conforme os argumentos usados para iniciar o vLLM e a memória disponível.
 
@@ -61,7 +61,7 @@ Não versione o arquivo `.env`.
 | `max_concurrency` | `4` | inteiro `>= 1` | Número máximo de chamadas simultâneas nas execuções assíncronas. Não altera o batching interno do servidor vLLM. |
 | `debug` | `false` | `true`, `false` | Na extração, preserva em `candidatos` as respostas sem correspondência textual, usando offsets nulos. Nas demais etapas, é apenas registrado no manifesto. |
 
-`null` não significa enviar JSON `null`. Nas chamadas diretas, o pipeline usa `openai.omit` para `temperature`, `top_p` e `reasoning_effort`; para `top_k`, ele remove completamente `extra_body`. A integração LangChain também exclui valores `None` da requisição HTTP. Assim, o servidor aplica seus próprios defaults.
+`null` não significa enviar JSON `null`. Nas chamadas diretas, o pipeline usa `openai.omit` para `temperature`, `top_p` e `reasoning_effort`; para `top_k`, ele remove completamente `extra_body`. Assim, o servidor aplica seus próprios defaults.
 
 Os defaults efetivos de amostragem do vLLM podem variar conforme sua versão, argumentos de inicialização, `generation_config.json` do modelo e chat template. Para execuções reproduzíveis, informe explicitamente os parâmetros desejados.
 
@@ -126,7 +126,7 @@ Quando `async_requests: true`, apenas o entrypoint isolado daquela etapa usa con
 
 ## Checkpoints e auditoria
 
-Cada etapa grava um JSON por documento. A completude usa prompts separados para jurisprudência e legislação, retorna apenas `completa` e salva cada documento independentemente; resultados concluídos permanecem no disco mesmo se uma requisição posterior falhar. A consulta não é formulada nessa etapa: o agente de veracidade recebe o trecho original e o tipo definido pelo extractor, produz seu próprio SQL e pode consultar repetidamente uma conexão SQLite somente leitura. Antes de declarar uma citação inventada, ele deve tentar busca literal, variações do identificador, FTS5 e filtros por natureza.
+Cada etapa grava um JSON por documento. A completude usa prompts separados para jurisprudência e legislação, retorna apenas `completa` e salva cada documento independentemente; resultados concluídos permanecem no disco mesmo se uma requisição posterior falhar. Na veracidade, o modelo recebe o trecho original e extrai os termos de busca. O código executa uma única consulta FTS5 em uma conexão SQLite somente leitura.
 
 ```text
 outputs/<run>/01-extraction/<documento_id>.json
@@ -137,13 +137,15 @@ outputs/<run>/predictions/<documento_id>.json
 
 A extração primeiro procura o trecho literalmente; se isso falhar, tenta novamente tratando sequências de espaços, tabs e quebras de linha como equivalentes. Quando essa segunda busca encontra o trecho, os offsets são convertidos de volta para o texto original e `trecho` preserva inclusive suas quebras de linha.
 
+Na veracidade, o modelo não recebe tools e não escreve SQL. Uma chamada estruturada extrai uma lista de valores FTS e, para jurisprudência, os filtros `natureza`, `tribunal`, `ano` e `relator`. O código combina os valores com `AND`, monta uma única consulta parametrizada e classifica o resultado: zero registros como `inventada`, um como `real` e mais de um como `incompleta`.
+
 Com `extractor.debug: true`, candidatos ainda não localizados são preservados com `inicio` e `fim` iguais a `null`. Com o padrão `false`, eles não aparecem na lista processada de `candidatos`. Em ambos os modos, a resposta integral do modelo permanece em `chamadas_modelo.output` para auditoria. Candidatos sem offsets nunca entram em `predictions`, pois a submissão exige posições numéricas.
 
 Os checkpoints das três etapas contêm `chamadas_modelo`, com:
 
 - `input`: mensagens, schema de resposta e parâmetros efetivamente enviados;
 - `output`: resposta bruta do vLLM/cliente e resultado estruturado;
-- na veracidade, mensagens do agente, tool calls e resultados da ferramenta SQLite.
+- na veracidade, a extração estruturada, o SQL parametrizado e os registros retornados pelo SQLite.
 
 Credenciais nunca são incluídas nesses arquivos.
 

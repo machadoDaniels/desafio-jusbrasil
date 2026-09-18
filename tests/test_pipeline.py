@@ -18,6 +18,8 @@ from desafio_jusbrasil.contracts import (
     CandidatoCitacao,
     CandidatoCitacaoRequest,
     Classificacao,
+    ConsultaJurisprudencia,
+    ConsultaLegislacao,
     DocumentoCompletude,
     DocumentoExtraido,
     DocumentoPredito,
@@ -34,7 +36,7 @@ from desafio_jusbrasil.extractor import (
 )
 from desafio_jusbrasil.orchestrator import Orquestrador
 from desafio_jusbrasil.veracity import (
-    AgenteVeracidade,
+    VerificadorVeracidade,
     _prompt_veracidade,
     executar_veracidade,
     executar_veracidade_async,
@@ -285,40 +287,63 @@ class PipelineTest(unittest.TestCase):
             trecho="Súmula 331 do TST",
             tipo=TipoCitacao.JURISPRUDENCIA,
         )
-        conteudo = AgenteVeracidade._entrada(candidato)["messages"][0]["content"]
-        self.assertIn("jurisprudencia", conteudo)
-        self.assertIn(candidato.trecho, conteudo)
+        mensagens = VerificadorVeracidade._mensagens(candidato)
+        self.assertIn(candidato.trecho, mensagens[1]["content"])
         self.assertNotEqual(
             _prompt_veracidade(TipoCitacao.JURISPRUDENCIA),
             _prompt_veracidade(TipoCitacao.LEI),
         )
+        self.assertEqual(
+            set(ConsultaJurisprudencia.model_fields),
+            {"valores_fts", "natureza", "tribunal", "ano", "relator"},
+        )
+        self.assertEqual(set(ConsultaLegislacao.model_fields), {"valores_fts"})
 
-    def test_text2sql_usa_banco_somente_leitura(self) -> None:
+    def test_veracidade_monta_uma_consulta_fts_parametrizada(self) -> None:
         with tempfile.TemporaryDirectory() as temporario:
             banco = Path(temporario) / "base.db"
             with sqlite3.connect(banco) as conexao:
-                conexao.execute("CREATE TABLE documentos (id INTEGER, texto TEXT)")
-                conexao.execute("INSERT INTO documentos VALUES (1, 'teste')")
-
-            agente = object.__new__(AgenteVeracidade)
-            agente._database = banco
-            resultado = json.loads(
-                agente._consultar_base("SELECT id, texto FROM documentos")
-            )
-            self.assertEqual(resultado, [{"id": 1, "texto": "teste"}])
-            erro_permissao = json.loads(
-                agente._consultar_base("DELETE FROM documentos")
-            )
-            self.assertIn("SELECT", erro_permissao["erro_sql"])
-
-            with sqlite3.connect(banco) as conexao:
-                conexao.execute("CREATE VIRTUAL TABLE documentos_fts USING fts5(texto)")
-            erro_fts = json.loads(
-                agente._consultar_base(
-                    "SELECT * FROM documentos_fts WHERE documentos_fts MATCH 'RHC/SC'"
+                conexao.executescript(
+                    """
+                    CREATE TABLE documentos (
+                        documento_id TEXT PRIMARY KEY,
+                        id INTEGER NOT NULL UNIQUE,
+                        tribunal TEXT,
+                        ano INTEGER,
+                        relator TEXT,
+                        natureza TEXT NOT NULL,
+                        tipo TEXT NOT NULL,
+                        texto TEXT NOT NULL,
+                        texto_len INTEGER NOT NULL
+                    );
+                    CREATE VIRTUAL TABLE documentos_fts USING fts5(
+                        texto, content='documentos', content_rowid='rowid'
+                    );
+                    INSERT INTO documentos VALUES (
+                        'doc_1', 42, 'STJ', 2023, 'Maria Silva', 'acordao',
+                        'jurisprudencia', 'Agravo em Recurso Especial 1 996 496 RJ', 44
+                    );
+                    INSERT INTO documentos_fts(documentos_fts) VALUES ('rebuild');
+                    """
                 )
+
+            verificador = object.__new__(VerificadorVeracidade)
+            verificador._database = banco
+            consulta = ConsultaJurisprudencia(
+                valores_fts=["1 996 496", "RJ"],
+                natureza="acordao",
+                tribunal="STJ",
+                ano=2023,
+                relator="Maria Silva",
             )
-            self.assertIn("erro_sql", erro_fts)
+            registros, sql, parametros = verificador._consultar_base(consulta)
+            self.assertEqual(registros, [{"id": 42, "documento_id": "doc_1"}])
+            self.assertEqual(parametros[0], '"1 996 496" AND "RJ"')
+            self.assertIn("d.tribunal = ?", sql)
+            self.assertEqual(
+                verificador._classificar(registros).classificacao,
+                Classificacao.REAL,
+            )
 
     def test_real_exige_id_canonico(self) -> None:
         with self.assertRaises(ValidationError):
