@@ -21,19 +21,18 @@ sys.path[:0] = [str(ROOT / "desafio-jusbrasil-bracis-2026"), str(ROOT / "src")]
 from kaggle_metric import _casar
 
 from desafio_jusbrasil.contracts import DocumentoCompletude
+from desafio_jusbrasil.utils import listar_resultados
 
 
 def _ler(pasta: Path) -> dict[str, DocumentoCompletude]:
-    arquivos = sorted(
-        arquivo for arquivo in pasta.glob("*.json") if arquivo.name != "manifest.json"
-    )
-    if not arquivos:
-        raise ValueError(f"nenhum JSON encontrado em {pasta}")
+    if (pasta / "02-completeness").is_dir():
+        pasta = pasta / "02-completeness"
     return {
-        arquivo.stem: DocumentoCompletude.model_validate_json(
-            arquivo.read_text(encoding="utf-8")
-        )
-        for arquivo in arquivos
+        documento.documento_id: documento
+        for arquivo in listar_resultados(pasta)
+        for documento in [
+            DocumentoCompletude.model_validate_json(arquivo.read_text(encoding="utf-8"))
+        ]
     }
 
 
