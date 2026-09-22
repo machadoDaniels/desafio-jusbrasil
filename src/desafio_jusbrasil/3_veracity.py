@@ -13,7 +13,6 @@ from openai.types.chat import ChatCompletionMessageParam
 from tqdm import tqdm
 
 from .contracts import (
-    AuditoriaChamadaModelo,
     CandidatoAnalisado,
     CandidatoCitacao,
     CandidatoClassificado,
@@ -28,7 +27,13 @@ from .contracts import (
     PipelineConfig,
     ResultadoVeracidade,
     TipoCitacao,
+)
+from .utils import (
+    criar_auditoria,
     escrever_manifesto_etapa,
+    escrever_saida_documento,
+    ler_documento,
+    listar_resultados,
 )
 
 _PROMPT_JURISPRUDENCIA = """Extraia de uma citação de jurisprudência brasileira os dados necessários
@@ -88,7 +93,7 @@ class VerificadorVeracidade:
     def classificar_auditada(
         self,
         candidato: CandidatoCitacao,
-    ) -> tuple[ResultadoVeracidade, AuditoriaChamadaModelo]:
+    ) -> tuple[ResultadoVeracidade, dict[str, Any]]:
         if not isinstance(self._cliente, OpenAI):
             raise TypeError("classificar_auditada() exige cliente síncrono")
         requisicao = self._requisicao(candidato)
@@ -98,7 +103,7 @@ class VerificadorVeracidade:
     async def classificar_auditada_async(
         self,
         candidato: CandidatoCitacao,
-    ) -> tuple[ResultadoVeracidade, AuditoriaChamadaModelo]:
+    ) -> tuple[ResultadoVeracidade, dict[str, Any]]:
         if not isinstance(self._cliente, AsyncOpenAI):
             raise TypeError("classificar_auditada_async() exige cliente assíncrono")
         requisicao = self._requisicao(candidato)
@@ -134,29 +139,21 @@ class VerificadorVeracidade:
         requisicao: dict[str, Any],
         resposta: Any,
         tipo: TipoCitacao,
-    ) -> tuple[ResultadoVeracidade, AuditoriaChamadaModelo]:
+    ) -> tuple[ResultadoVeracidade, dict[str, Any]]:
         consulta = resposta.choices[0].message.parsed
         if consulta is None:
             raise RuntimeError("o modelo não retornou uma consulta estruturada")
         registros, sql, parametros = self._consultar_base(consulta)
         resultado = self._classificar(registros)
-        entrada = {
-            nome: valor for nome, valor in requisicao.items() if valor is not omit
-        }
-        entrada["response_format"] = _contrato_consulta(tipo).model_json_schema()
-        auditoria = AuditoriaChamadaModelo(
-            input=entrada,
-            output={
-                "bruta": resposta.model_dump(
-                    mode="json",
-                    exclude={"choices": {"__all__": {"message": {"parsed"}}}},
-                ),
-                "estruturada": consulta.model_dump(mode="json"),
-                "sql": sql,
-                "parametros": parametros,
-                "registros": registros,
-                "resultado": resultado.model_dump(mode="json"),
-            },
+        auditoria = criar_auditoria(
+            requisicao,
+            resposta,
+            _contrato_consulta(tipo),
+            consulta.model_dump(mode="json"),
+            sql=sql,
+            parametros=parametros,
+            registros=registros,
+            resultado=resultado.model_dump(mode="json"),
         )
         return resultado, auditoria
 
@@ -220,35 +217,6 @@ class VerificadorVeracidade:
         )
 
 
-def _listar_jsons(caminho: Path) -> list[Path]:
-    arquivos = sorted(
-        arquivo for arquivo in caminho.glob("*.json") if arquivo.name != "manifest.json"
-    )
-    if not arquivos:
-        raise ValueError(f"nenhum arquivo JSON encontrado em {caminho}")
-    return arquivos
-
-
-def _ler_documento(arquivo: Path) -> DocumentoCompletude:
-    try:
-        return DocumentoCompletude.model_validate_json(
-            arquivo.read_text(encoding="utf-8")
-        )
-    except ValueError as erro:
-        raise ValueError(f"{arquivo}: {erro}") from erro
-
-
-def _escrever_json(documento: DocumentoClassificado, destino: Path) -> None:
-    destino.mkdir(parents=True, exist_ok=True)
-    caminho = destino / f"{documento.documento_id}.json"
-    temporario = caminho.with_suffix(".json.tmp")
-    temporario.write_text(
-        documento.model_dump_json(indent=2) + "\n",
-        encoding="utf-8",
-    )
-    temporario.replace(caminho)
-
-
 def _resultado_incompleto() -> ResultadoVeracidade:
     return ResultadoVeracidade(
         classificacao=Classificacao.INCOMPLETA,
@@ -261,12 +229,12 @@ def executar_veracidade(
     output_file: Path,
     classificador: ClassificadorVeracidade,
 ) -> None:
-    arquivos = _listar_jsons(input_file)
+    arquivos = listar_resultados(input_file)
     with tqdm(
         total=len(arquivos), desc="Verificando citações", unit="documento"
     ) as progresso:
         for arquivo in arquivos:
-            documento = _ler_documento(arquivo)
+            documento = ler_documento(arquivo, DocumentoCompletude)
             candidatos = []
             chamadas = []
             for analisado in documento.candidatos:
@@ -284,14 +252,13 @@ def executar_veracidade(
                         veracidade=resultado,
                     )
                 )
-            _escrever_json(
+            escrever_saida_documento(
+                output_file,
                 DocumentoClassificado(
                     documento_id=documento.documento_id,
-                    texto=documento.texto,
                     candidatos=candidatos,
-                    chamadas_modelo=chamadas,
                 ),
-                output_file,
+                chamadas,
             )
             progresso.update()
 
@@ -302,16 +269,16 @@ async def executar_veracidade_async(
     classificador: ClassificadorVeracidadeAsync,
     max_concurrency: int,
 ) -> None:
-    arquivos = _listar_jsons(input_file)
+    arquivos = listar_resultados(input_file)
     semaforo = asyncio.Semaphore(max_concurrency)
     progresso = tqdm(total=len(arquivos), desc="Verificando citações", unit="documento")
 
     async def processar(arquivo: Path) -> None:
-        documento = _ler_documento(arquivo)
+        documento = ler_documento(arquivo, DocumentoCompletude)
 
         async def classificar(
             analisado: CandidatoAnalisado,
-        ) -> tuple[CandidatoClassificado, AuditoriaChamadaModelo | None]:
+        ) -> tuple[CandidatoClassificado, dict[str, Any] | None]:
             if analisado.completude.completa:
                 async with semaforo:
                     (
@@ -335,14 +302,13 @@ async def executar_veracidade_async(
         resultados = await asyncio.gather(
             *(classificar(analisado) for analisado in documento.candidatos)
         )
-        _escrever_json(
+        escrever_saida_documento(
+            output_file,
             DocumentoClassificado(
                 documento_id=documento.documento_id,
-                texto=documento.texto,
                 candidatos=[item[0] for item in resultados],
-                chamadas_modelo=[item[1] for item in resultados if item[1] is not None],
             ),
-            output_file,
+            [item[1] for item in resultados if item[1] is not None],
         )
         progresso.update()
 

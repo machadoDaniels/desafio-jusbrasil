@@ -2,13 +2,13 @@
 
 from __future__ import annotations
 
+from importlib import import_module
 from pathlib import Path
 
 from dotenv import load_dotenv
 from openai import OpenAI
 from tqdm import tqdm
 
-from .completeness import AgenteCompletude, executar_completude
 from .contracts import (
     Classificacao,
     ClassificadorCompletude,
@@ -19,18 +19,22 @@ from .contracts import (
     PipelineConfig,
     Predicao,
     Resolucao,
-    escrever_manifesto_etapa,
 )
-from .extractor import AgenteExtrator, executar_extracao
-from .veracity import VerificadorVeracidade, executar_veracidade
+from .utils import escrever_manifesto_etapa, listar_resultados
+
+_extractor = import_module(".1_extractor", __package__)
+_completeness = import_module(".2_completeness", __package__)
+_veracity = import_module(".3_veracity", __package__)
+AgenteExtrator = _extractor.AgenteExtrator
+executar_extracao = _extractor.executar_extracao
+AgenteCompletude = _completeness.AgenteCompletude
+executar_completude = _completeness.executar_completude
+VerificadorVeracidade = _veracity.VerificadorVeracidade
+executar_veracidade = _veracity.executar_veracidade
 
 
 def materializar(entrada: Path, pasta_saida: Path) -> None:
-    arquivos = sorted(
-        arquivo for arquivo in entrada.glob("*.json") if arquivo.name != "manifest.json"
-    )
-    if not arquivos:
-        raise ValueError(f"nenhum arquivo JSON encontrado em {entrada}")
+    arquivos = listar_resultados(entrada)
     pasta_saida.mkdir(parents=True, exist_ok=True)
     for arquivo in tqdm(arquivos, desc="Materializando predições"):
         documento = DocumentoClassificado.model_validate_json(
@@ -61,7 +65,7 @@ def materializar(entrada: Path, pasta_saida: Path) -> None:
             documento_id=documento.documento_id,
             citacoes=citacoes,
         )
-        (pasta_saida / arquivo.name).write_text(
+        (pasta_saida / f"{documento.documento_id}.json").write_text(
             predicao.model_dump_json(indent=2, exclude_none=True) + "\n",
             encoding="utf-8",
         )
@@ -85,7 +89,7 @@ class Orquestrador:
         veracidade = workdir / "03-veracity"
 
         executar_extracao(pasta_txt, extracao, self._extrator)
-        executar_completude(extracao, completude, self._completude)
+        executar_completude(extracao, completude, self._completude, pasta_txt)
         executar_veracidade(completude, veracidade, self._veracidade)
         materializar(veracidade, workdir / "predictions")
 

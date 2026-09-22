@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-import json
-from datetime import UTC, datetime
 from enum import StrEnum
 from pathlib import Path
 from typing import Any, Literal, Protocol
@@ -61,32 +59,6 @@ class PipelineConfig(Contract):
         return cls.model_validate(dados)
 
 
-class AuditoriaChamadaModelo(Contract):
-    """Input e output serializáveis de uma chamada ao modelo, sem credenciais."""
-
-    input: dict[str, Any]
-    output: dict[str, Any]
-
-
-def escrever_manifesto_etapa(
-    destino: Path,
-    etapa: str,
-    config: StageConfig,
-) -> None:
-    """Registra a configuração efetiva da etapa junto aos seus checkpoints."""
-    destino.mkdir(parents=True, exist_ok=True)
-    manifesto = {
-        "etapa": etapa,
-        "gerado_em": datetime.now(UTC).isoformat(),
-        "formato_checkpoint": "um JSON por documento",
-        "configuracao_modelo": config.model_dump(mode="json"),
-    }
-    (destino / "manifest.json").write_text(
-        json.dumps(manifesto, ensure_ascii=False, indent=2) + "\n",
-        encoding="utf-8",
-    )
-
-
 class CandidatoCitacaoRequest(Contract):
     trecho: str = Field(min_length=1)
     tipo: TipoCitacao
@@ -113,11 +85,13 @@ class CandidatoCitacao(CandidatoCitacaoRequest):
 class DocumentoExtraido(Contract):
     documento_id: str = Field(min_length=1)
     candidatos: list[CandidatoCitacao]
-    texto: str
-    chamadas_modelo: list[AuditoriaChamadaModelo] = Field(default_factory=list)
+    texto: str = Field(default="", exclude=True)
+    chamadas_modelo: list[dict[str, Any]] = Field(default_factory=list, exclude=True)
 
     @model_validator(mode="after")
     def validar_spans(self) -> DocumentoExtraido:
+        if not self.texto:
+            return self
         for candidato in self.candidatos:
             if candidato.inicio is None or candidato.fim is None:
                 continue
@@ -140,8 +114,8 @@ class CandidatoAnalisado(Contract):
 class DocumentoCompletude(Contract):
     documento_id: str = Field(min_length=1)
     candidatos: list[CandidatoAnalisado]
-    texto: str
-    chamadas_modelo: list[AuditoriaChamadaModelo] = Field(default_factory=list)
+    texto: str = Field(default="", exclude=True)
+    chamadas_modelo: list[dict[str, Any]] = Field(default_factory=list, exclude=True)
 
 
 class ConsultaJurisprudencia(Contract):
@@ -180,8 +154,8 @@ class CandidatoClassificado(Contract):
 class DocumentoClassificado(Contract):
     documento_id: str = Field(min_length=1)
     candidatos: list[CandidatoClassificado]
-    texto: str
-    chamadas_modelo: list[AuditoriaChamadaModelo] = Field(default_factory=list)
+    texto: str = Field(default="", exclude=True)
+    chamadas_modelo: list[dict[str, Any]] = Field(default_factory=list, exclude=True)
 
 
 class Resolucao(Contract):
@@ -217,14 +191,14 @@ class ExtratorCandidatos(Protocol):
     def extrair_auditada(
         self,
         texto: str,
-    ) -> tuple[list[CandidatoCitacao], AuditoriaChamadaModelo]: ...
+    ) -> tuple[list[CandidatoCitacao], dict[str, Any]]: ...
 
 
 class ExtratorCandidatosAsync(Protocol):
     async def extrair_auditada_async(
         self,
         texto: str,
-    ) -> tuple[list[CandidatoCitacao], AuditoriaChamadaModelo]: ...
+    ) -> tuple[list[CandidatoCitacao], dict[str, Any]]: ...
 
 
 class ClassificadorCompletude(Protocol):
@@ -232,7 +206,7 @@ class ClassificadorCompletude(Protocol):
         self,
         candidato: CandidatoCitacao,
         contexto: str,
-    ) -> tuple[ResultadoCompletude, AuditoriaChamadaModelo]: ...
+    ) -> tuple[ResultadoCompletude, list[dict[str, Any]]]: ...
 
 
 class ClassificadorCompletudeAsync(Protocol):
@@ -240,18 +214,18 @@ class ClassificadorCompletudeAsync(Protocol):
         self,
         candidato: CandidatoCitacao,
         contexto: str,
-    ) -> tuple[ResultadoCompletude, AuditoriaChamadaModelo]: ...
+    ) -> tuple[ResultadoCompletude, list[dict[str, Any]]]: ...
 
 
 class ClassificadorVeracidade(Protocol):
     def classificar_auditada(
         self,
         candidato: CandidatoCitacao,
-    ) -> tuple[ResultadoVeracidade, AuditoriaChamadaModelo]: ...
+    ) -> tuple[ResultadoVeracidade, dict[str, Any]]: ...
 
 
 class ClassificadorVeracidadeAsync(Protocol):
     async def classificar_auditada_async(
         self,
         candidato: CandidatoCitacao,
-    ) -> tuple[ResultadoVeracidade, AuditoriaChamadaModelo]: ...
+    ) -> tuple[ResultadoVeracidade, dict[str, Any]]: ...

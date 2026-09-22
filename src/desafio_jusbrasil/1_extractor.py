@@ -3,16 +3,17 @@
 from __future__ import annotations
 
 import asyncio
+import logging
 from pathlib import Path
 from typing import Any
 
 from dotenv import load_dotenv
 from openai import AsyncOpenAI, OpenAI, omit
 from openai.types.chat import ChatCompletionMessageParam
+from pydantic import ValidationError
 from tqdm import tqdm
 
 from .contracts import (
-    AuditoriaChamadaModelo,
     CandidatoCitacao,
     CandidatoCitacaoRequest,
     DocumentoExtraido,
@@ -21,13 +22,16 @@ from .contracts import (
     LoteCandidatosRequest,
     PipelineConfig,
     StageConfig,
-    escrever_manifesto_etapa,
 )
+from .utils import criar_auditoria, escrever_manifesto_etapa, escrever_saida_documento
+
+_MAX_RETRIES = 4
+_LOGGER = logging.getLogger(__name__)
 
 _SYSTEM_PROMPT = """Você extrai citações de documentos jurídicos brasileiros.
 Retorne todas as citações a jurisprudência, súmulas e dispositivos legais.
 Retorne somente o trecho literal verbatim(não remova nada, nem marcadores e formatação), o tipo e, opcionalmente, a confiança.
-Classifique como jurisprudencia ou lei."""
+Classifique como jurisprudencia ou lei. Em cada item, use exatamente o campo `tipo`, nunca `type`."""
 
 
 class AgenteExtrator:
@@ -47,7 +51,7 @@ class AgenteExtrator:
     def extrair_auditada(
         self,
         texto: str,
-    ) -> tuple[list[CandidatoCitacao], AuditoriaChamadaModelo]:
+    ) -> tuple[list[CandidatoCitacao], dict[str, Any]]:
         if not isinstance(self._cliente, OpenAI):
             raise TypeError("extrair() exige um cliente OpenAI síncrono")
         candidatos, auditoria = self._consultar_modelo(texto)
@@ -60,7 +64,7 @@ class AgenteExtrator:
     async def extrair_auditada_async(
         self,
         texto: str,
-    ) -> tuple[list[CandidatoCitacao], AuditoriaChamadaModelo]:
+    ) -> tuple[list[CandidatoCitacao], dict[str, Any]]:
         if not isinstance(self._cliente, AsyncOpenAI):
             raise TypeError("extrair_async() exige um cliente AsyncOpenAI")
         candidatos, auditoria = await self._consultar_modelo_async(texto)
@@ -77,12 +81,23 @@ class AgenteExtrator:
 
     def _consultar_modelo(
         self, texto: str
-    ) -> tuple[list[CandidatoCitacaoRequest], AuditoriaChamadaModelo]:
+    ) -> tuple[list[CandidatoCitacaoRequest], dict[str, Any]]:
         assert isinstance(self._cliente, OpenAI)
         requisicao = self._requisicao(texto)
-        resposta = self._cliente.chat.completions.parse(**requisicao)
-        resultado = self._obter_candidatos(resposta.choices[0].message.parsed)
-        return resultado, self._auditoria(requisicao, resposta, resultado)
+        for retries in range(_MAX_RETRIES + 1):
+            try:
+                resposta = self._cliente.chat.completions.parse(**requisicao)
+                resultado = self._obter_candidatos(resposta.choices[0].message.parsed)
+                return resultado, self._auditoria(requisicao, resposta, resultado)
+            except ValidationError:
+                if retries == _MAX_RETRIES:
+                    raise
+                _LOGGER.warning(
+                    "resposta estruturada inválida; retry %d/%d",
+                    retries + 1,
+                    _MAX_RETRIES,
+                )
+        raise AssertionError("unreachable")
 
     def _requisicao(self, texto: str) -> dict[str, Any]:
         requisicao: dict[str, Any] = {
@@ -108,31 +123,34 @@ class AgenteExtrator:
         requisicao: dict,
         resposta: Any,
         resultado: list[CandidatoCitacaoRequest],
-    ) -> AuditoriaChamadaModelo:
-        entrada = {
-            nome: valor for nome, valor in requisicao.items() if valor is not omit
-        }
-        entrada["response_format"] = LoteCandidatosRequest.model_json_schema()
-        return AuditoriaChamadaModelo(
-            input=entrada,
-            output={
-                "bruta": resposta.model_dump(
-                    mode="json",
-                    exclude={"choices": {"__all__": {"message": {"parsed"}}}},
-                ),
-                "estruturada": [item.model_dump(mode="json") for item in resultado],
-            },
+    ) -> dict[str, Any]:
+        return criar_auditoria(
+            requisicao,
+            resposta,
+            LoteCandidatosRequest,
+            [item.model_dump(mode="json") for item in resultado],
         )
 
     async def _consultar_modelo_async(
         self,
         texto: str,
-    ) -> tuple[list[CandidatoCitacaoRequest], AuditoriaChamadaModelo]:
+    ) -> tuple[list[CandidatoCitacaoRequest], dict[str, Any]]:
         assert isinstance(self._cliente, AsyncOpenAI)
         requisicao = self._requisicao(texto)
-        resposta = await self._cliente.chat.completions.parse(**requisicao)
-        resultado = self._obter_candidatos(resposta.choices[0].message.parsed)
-        return resultado, self._auditoria(requisicao, resposta, resultado)
+        for retries in range(_MAX_RETRIES + 1):
+            try:
+                resposta = await self._cliente.chat.completions.parse(**requisicao)
+                resultado = self._obter_candidatos(resposta.choices[0].message.parsed)
+                return resultado, self._auditoria(requisicao, resposta, resultado)
+            except ValidationError:
+                if retries == _MAX_RETRIES:
+                    raise
+                _LOGGER.warning(
+                    "resposta estruturada inválida; retry %d/%d",
+                    retries + 1,
+                    _MAX_RETRIES,
+                )
+        raise AssertionError("unreachable")
 
     @staticmethod
     def _obter_candidatos(
@@ -234,16 +252,6 @@ def _localizar_no_texto_normalizado(
     return spans
 
 
-def _escrever_jsons(documentos: list[DocumentoExtraido], destino: Path) -> None:
-    destino.mkdir(parents=True, exist_ok=True)
-    for documento in documentos:
-        caminho = destino / f"{documento.documento_id}.json"
-        caminho.write_text(
-            documento.model_dump_json(indent=2) + "\n",
-            encoding="utf-8",
-        )
-
-
 def executar_extracao(
     input_dir: Path,
     output_file: Path,
@@ -253,19 +261,18 @@ def executar_extracao(
     if not arquivos:
         raise ValueError(f"nenhum arquivo .txt encontrado em {input_dir}")
 
-    documentos = []
     for arquivo in tqdm(arquivos, desc="Extraindo candidatos"):
         texto = arquivo.read_text(encoding="utf-8")
         candidatos, chamada = extrator.extrair_auditada(texto)
-        documentos.append(
+        escrever_saida_documento(
+            output_file,
             DocumentoExtraido(
                 documento_id=arquivo.stem,
                 texto=texto,
                 candidatos=candidatos,
-                chamadas_modelo=[chamada],
-            )
+            ),
+            [chamada],
         )
-    _escrever_jsons(documentos, output_file)
 
 
 async def executar_extracao_async(
@@ -281,23 +288,25 @@ async def executar_extracao_async(
     semaforo = asyncio.Semaphore(max_concurrency)
     progresso = tqdm(total=len(arquivos), desc="Extraindo candidatos")
 
-    async def processar(arquivo: Path) -> DocumentoExtraido:
+    async def processar(arquivo: Path) -> None:
         async with semaforo:
             texto = arquivo.read_text(encoding="utf-8")
             candidatos, chamada = await extrator.extrair_auditada_async(texto)
         progresso.update()
-        return DocumentoExtraido(
-            documento_id=arquivo.stem,
-            texto=texto,
-            candidatos=candidatos,
-            chamadas_modelo=[chamada],
+        escrever_saida_documento(
+            output_file,
+            DocumentoExtraido(
+                documento_id=arquivo.stem,
+                texto=texto,
+                candidatos=candidatos,
+            ),
+            [chamada],
         )
 
     try:
-        documentos = await asyncio.gather(*(processar(arquivo) for arquivo in arquivos))
+        await asyncio.gather(*(processar(arquivo) for arquivo in arquivos))
     finally:
         progresso.close()
-    _escrever_jsons(documentos, output_file)
 
 
 async def _executar_extracao_async(config: PipelineConfig, destino: Path) -> None:
