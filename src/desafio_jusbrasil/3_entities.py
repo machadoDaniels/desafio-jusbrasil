@@ -4,14 +4,16 @@ from __future__ import annotations
 
 import asyncio
 import json
+import logging
 import re
 from collections.abc import Mapping
 from pathlib import Path
 from typing import Any
 
 from dotenv import load_dotenv
-from openai import AsyncOpenAI, omit
+from openai import AsyncOpenAI, OpenAIError, omit
 from openai.types.chat import ChatCompletionMessageParam
+from pydantic import ValidationError
 from tqdm import tqdm
 
 from .contracts import (
@@ -48,6 +50,8 @@ não tem significado. O ano dentro de um número CNJ não é o ano do julgamento
 
 Para súmulas, extraia o número e indique se é vinculante. Preencha somente dados
 explícitos ou decorrentes de abreviações jurídicas inequívocas."""
+
+_LOG = logging.getLogger(__name__)
 
 _PROMPT_LEI = """Extraia os campos de identificação desta citação de legislação
 brasileira. Não escreva SQL e não avalie sua veracidade.
@@ -89,8 +93,33 @@ class AgenteExtratorEntidades:
         if not isinstance(self._cliente, AsyncOpenAI):
             raise TypeError("extrair_auditada_async() exige cliente assíncrono")
         requisicao = self._requisicao(candidato)
-        resposta = await self._cliente.chat.completions.parse(**requisicao)
-        return self._finalizar(requisicao, resposta, candidato)
+        ultimo_erro: Exception | None = None
+        for tentativa in range(1, self._config.max_retries + 1):
+            try:
+                async with asyncio.timeout(self._config.request_timeout_seconds):
+                    resposta = await self._cliente.chat.completions.parse(**requisicao)
+                return self._finalizar(requisicao, resposta, candidato, tentativa)
+            except (
+                TimeoutError,
+                OpenAIError,
+                ValidationError,
+                ValueError,
+                IndexError,
+                AttributeError,
+            ) as erro:
+                ultimo_erro = erro
+                _LOG.warning(
+                    "entidades: tentativa %d/%d falhou para %r: %s",
+                    tentativa,
+                    self._config.max_retries,
+                    candidato.trecho[:80],
+                    erro,
+                )
+                if tentativa < self._config.max_retries:
+                    await asyncio.sleep(tentativa)
+        raise RuntimeError(
+            f"retries esgotados para {candidato.trecho[:80]!r}: {ultimo_erro}"
+        ) from ultimo_erro
 
     @staticmethod
     def _mensagens(candidato: CandidatoCitacao) -> list[ChatCompletionMessageParam]:
@@ -121,6 +150,7 @@ class AgenteExtratorEntidades:
         requisicao: dict[str, Any],
         resposta: Any,
         candidato: CandidatoCitacao,
+        tentativa: int,
     ) -> tuple[ConsultaJurisprudencia | ConsultaLegislacao, dict[str, Any]]:
         consulta = resposta.choices[0].message.parsed
         if consulta is None:
@@ -160,6 +190,7 @@ class AgenteExtratorEntidades:
             requisicao,
             resposta,
             _contrato_consulta(candidato.tipo),
+            tentativa=tentativa,
             campos_extraidos=consulta.model_dump(mode="json"),
         )
         return consulta, auditoria
@@ -180,12 +211,7 @@ async def executar_entities_async(
 
         async def extrair(
             analisado: CandidatoAnalisado,
-        ) -> tuple[CandidatoEntidades, dict[str, Any] | None]:
-            if not analisado.completude.completa:
-                return CandidatoEntidades(
-                    candidato=analisado.candidato,
-                    completude=analisado.completude,
-                ), None
+        ) -> tuple[CandidatoEntidades, dict[str, Any]]:
             async with semaforo:
                 campos, chamada = await extrator.extrair_auditada_async(
                     analisado.candidato
@@ -205,7 +231,7 @@ async def executar_entities_async(
                 documento_id=documento.documento_id,
                 candidatos=[item[0] for item in resultados],
             ),
-            [item[1] for item in resultados if item[1] is not None],
+            [item[1] for item in resultados],
         )
         progresso.update()
 
