@@ -7,7 +7,7 @@ from pathlib import Path
 from typing import Any, Literal, Protocol
 
 import yaml
-from pydantic import BaseModel, ConfigDict, Field, model_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 
 class Contract(BaseModel):
@@ -29,7 +29,6 @@ class Classificacao(StrEnum):
 
 ReasoningEffort = Literal["none", "minimal", "low", "medium", "high", "xhigh", "max"]
 NaturezaJurisprudencia = Literal["acordao", "sumula"]
-FormatoNumero = Literal["cnj", "classico", "sem_numero"]
 Tribunal = Literal["STF", "STJ", "STM", "TSE", "TST"]
 UF = Literal[
     "AC",
@@ -109,6 +108,8 @@ class ModelConfig(Contract):
 class StageConfig(ModelConfig):
     async_requests: bool = False
     max_concurrency: int = Field(default=4, ge=1)
+    max_retries: int = Field(default=3, ge=1)
+    request_timeout_seconds: float = Field(default=120, gt=0)
     debug: bool = False
 
 
@@ -191,32 +192,27 @@ class ConsultaJurisprudenciaAgente(Contract):
 
     natureza: NaturezaJurisprudencia | None = Field(
         default=None,
-        description="'sumula' para enunciado de súmula; 'acordao' para processo ou recurso.",
+        description="'sumula' de súmula; 'acordao' para processo ou recurso.",
     )
-    numero_processo: str | None = Field(
-        default=None,
-        description=(
-            "Número do processo somente com dígitos. Em CNJ, preserve os 20 dígitos, "
-            "inclusive zeros à esquerda."
-        ),
-    )
-    formato_numero: FormatoNumero | None = Field(
-        default=None,
-        description=(
-            "'cnj' para NNNNNNN-DD.AAAA.J.TR.OOOO, 'classico' para outros números, "
-            "ou 'sem_numero' quando ausente."
-        ),
-    )
+    numero_processo_cnj: str | None = None
+    numero_classe_tribunal: str | None = None
+    numero_registro_tribunal: str | None = None
     classe_processual: ClasseProcessual | None = Field(
         default=None,
         description="Classe do processo ou recurso principal, independentemente da cadeia.",
     )
     cadeia_recursal: list[ClasseProcessual] | None = Field(
         default=None,
-        description=(
-            "Todas as classes citadas; a ordem não tem significado, mas preserve repetições."
-        ),
+        description="Todas as classes citadas, sem ordem nem repetições.",
     )
+
+    @field_validator("cadeia_recursal")
+    @classmethod
+    def remover_repeticoes_da_cadeia(
+        cls, valor: list[ClasseProcessual] | None
+    ) -> list[ClasseProcessual] | None:
+        return list(dict.fromkeys(valor)) if valor else valor
+
     tribunal: Tribunal | None = Field(
         default=None, description="Sigla canônica do tribunal explicitamente citado."
     )
@@ -243,11 +239,29 @@ class ConsultaJurisprudenciaAgente(Contract):
         ),
     )
 
+    @field_validator(
+        "numero_processo_cnj", "numero_classe_tribunal", "numero_registro_tribunal"
+    )
+    @classmethod
+    def validar_numeros(cls, valor: str | None, info: Any) -> str | None:
+        if valor is None:
+            return None
+        if not valor.isascii() or not valor.isdigit():
+            raise ValueError(f"{info.field_name} deve conter somente dígitos ASCII")
+        return valor
+
 
 class ConsultaJurisprudencia(ConsultaJurisprudenciaAgente):
     """Consulta de jurisprudência normalizada para busca na base canônica."""
 
     relator_norm: str | None = None
+
+    @field_validator("numero_processo_cnj")
+    @classmethod
+    def validar_cnj_normalizado(cls, valor: str | None) -> str | None:
+        if valor is not None and len(valor) != 20:
+            raise ValueError("numero_processo_cnj deve conter 20 dígitos")
+        return valor
 
 
 class ConsultaLegislacao(Contract):
