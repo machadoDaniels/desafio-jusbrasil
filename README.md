@@ -1,10 +1,11 @@
 # Desafio Jusbrasil BRACIS 2026
 
-Pipeline em três etapas para extrair e verificar citações jurídicas:
+Pipeline em quatro etapas para extrair e verificar citações jurídicas:
 
 1. `extractor`: encontra citações e calcula os offsets localmente;
 2. `completeness`: aplica uma regra específica por tipo e retorna somente se a citação é completa;
-3. `veracity`: extrai do trecho uma consulta estruturada e executa uma busca FTS5 determinística na base SQLite.
+3. `entities`: extrai do trecho uma consulta estruturada alinhada ao banco enriquecido;
+4. `veracity`: consulta primeiro as colunas estruturadas e usa FTS5 como fallback determinístico.
 
 ## Configuração
 
@@ -117,35 +118,47 @@ uv run desafio-jusbrasil
 Etapas isoladas:
 
 ```bash
-uv run python -m desafio_jusbrasil.extractor
-uv run python -m desafio_jusbrasil.completeness
-uv run python -m desafio_jusbrasil.veracity
+uv run python -m desafio_jusbrasil.1_extractor
+uv run python -m desafio_jusbrasil.2_completeness
+uv run python -m desafio_jusbrasil.3_entities
+uv run python -m desafio_jusbrasil.4_veracity
 ```
 
-Quando `async_requests: true`, apenas o entrypoint isolado daquela etapa usa concorrência. A ordem dos documentos e candidatos é preservada na saída.
+Extração e completude respeitam `async_requests`. `3_entities` usa somente chamadas assíncronas; `4_veracity` é determinística e não chama modelo. A ordem dos documentos e candidatos é preservada na saída.
+
+### Pré-processamento do banco canônico
+
+Para gerar uma cópia enriquecida sem alterar o SQLite original:
+
+```bash
+uv run python -m desafio_jusbrasil.database_preprocessing
+```
+
+Por padrão, a entrada é `desafio-jusbrasil-bracis-2026/desafio1_bracis.db` e a saída é `data/desafio1_bracis_enriched.db`; use `--input` e `--output` para sobrescrevê-las. A configuração do agente fica em `database_preprocessing` no `pipeline.yaml`. Por padrão, auditorias, checkpoints e relatórios são gravados em `outputs/database-preprocessing/run-001`. Use `--force` somente para substituir o banco de saída; origem e destino nunca podem ser o mesmo arquivo. O processo não modifica a tabela FTS existente.
 
 ## Checkpoints e auditoria
 
-Cada etapa grava um JSON por documento. A completude usa prompts separados para jurisprudência e legislação, retorna apenas `completa` e salva cada documento independentemente; resultados concluídos permanecem no disco mesmo se uma requisição posterior falhar. Na veracidade, o modelo recebe o trecho original e extrai os termos de busca. O código executa uma única consulta FTS5 em uma conexão SQLite somente leitura.
+Cada etapa grava um JSON por documento. A completude usa prompts separados para jurisprudência e legislação, retorna apenas `completa` e salva cada documento independentemente; resultados concluídos permanecem no disco mesmo se uma requisição posterior falhar. Em `03-entities`, o modelo recebe o trecho original de todas as citações, inclusive as incompletas, e extrai os campos totais ou parciais de busca; números processuais, natureza, súmula vinculante e relator normalizado recebem pós-processamento determinístico. `04-veracity` não chama LLM: consulta primeiro as colunas estruturadas do banco enriquecido e usa FTS5 como fallback, sempre em conexão SQLite somente leitura.
 
 ```text
-outputs/<run>/01-extraction/<documento_id>.json
-outputs/<run>/02-completeness/<documento_id>.json
-outputs/<run>/03-veracity/<documento_id>.json
+outputs/<run>/01-extraction/<documento_id>/resultado.json
+outputs/<run>/01-extraction/<documento_id>/0001.json
+outputs/<run>/02-completeness/<documento_id>/resultado.json
+outputs/<run>/02-completeness/<documento_id>/0001.json
+outputs/<run>/03-entities/<documento_id>/resultado.json
+outputs/<run>/03-entities/<documento_id>/0001.json
+outputs/<run>/04-veracity/<documento_id>/resultado.json
+outputs/<run>/04-veracity/<documento_id>/0001.json
 outputs/<run>/predictions/<documento_id>.json
 ```
 
 A extração primeiro procura o trecho literalmente; se isso falhar, tenta novamente tratando sequências de espaços, tabs e quebras de linha como equivalentes. Quando essa segunda busca encontra o trecho, os offsets são convertidos de volta para o texto original e `trecho` preserva inclusive suas quebras de linha.
 
-Na veracidade, o modelo não recebe tools e não escreve SQL. Uma chamada estruturada extrai uma lista de valores FTS e, para jurisprudência, os filtros `natureza`, `tribunal`, `ano` e `relator`. O código combina os valores com `AND`, monta uma única consulta parametrizada e classifica o resultado: zero registros como `inventada`, um como `real` e mais de um como `incompleta`.
+O agente de entidades não recebe tools e não escreve SQL. Ele extrai campos estruturados de processo, súmula ou legislação. A etapa de veracidade transforma esses campos em uma consulta parametrizada e classifica o resultado: zero registros como `inventada`, um como `real` e mais de um como `incompleta`.
 
-Com `extractor.debug: true`, candidatos ainda não localizados são preservados com `inicio` e `fim` iguais a `null`. Com o padrão `false`, eles não aparecem na lista processada de `candidatos`. Em ambos os modos, a resposta integral do modelo permanece em `chamadas_modelo.output` para auditoria. Candidatos sem offsets nunca entram em `predictions`, pois a submissão exige posições numéricas.
+Com `extractor.debug: true`, candidatos ainda não localizados são preservados com `inicio` e `fim` iguais a `null`. Com o padrão `false`, eles não aparecem na lista processada de `candidatos`. Em ambos os modos, a resposta integral do modelo permanece nos arquivos numerados da pasta do documento para auditoria. Candidatos sem offsets nunca entram em `predictions`, pois a submissão exige posições numéricas.
 
-Os checkpoints das três etapas contêm `chamadas_modelo`, com:
-
-- `input`: mensagens, schema de resposta e parâmetros efetivamente enviados;
-- `output`: resposta bruta do vLLM/cliente e resultado estruturado;
-- na veracidade, a extração estruturada, o SQL parametrizado e os registros retornados pelo SQLite.
+Cada pasta de documento contém `resultado.json`, usado como checkpoint pela etapa seguinte, e arquivos numerados de auditoria. O checkpoint não duplica as chamadas nem o texto original; a completude relê o TXT de `input_dir` para montar o contexto. Em `03-entities`, cada arquivo numerado contém os campos extraídos e, ao final, `input` e `output` da chamada. Em `04-veracity`, cada arquivo numerado contém os campos recebidos, o SQL parametrizado, seus parâmetros, os registros e o resultado da classificação.
 
 Credenciais nunca são incluídas nesses arquivos.
 
@@ -159,3 +172,12 @@ Cada diretório de etapa também contém `manifest.json`, que registra:
 - modo assíncrono e concorrência.
 
 Os avaliadores ignoram automaticamente o `manifest.json`.
+
+Para avaliar as entidades estruturadas contra o gold:
+
+```bash
+uv run python scripts/evaluate_entities.py outputs/<run> \
+  --gold outputs/gold/03-entities
+```
+
+O avaliador gera `03-entities/avaliacao.json`, um `resultado_eval.json` por documento e métricas de consulta exata por tipo, nível e campo. Em `cadeia_recursal`, a comparação ignora a ordem e preserva repetições.
