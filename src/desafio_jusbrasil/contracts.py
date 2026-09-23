@@ -83,6 +83,29 @@ ClasseProcessual = Literal[
     "Rp",
     "SLS",
 ]
+ClasseProcessualAgente = Literal[
+    "AI — Agravo de Instrumento",
+    "APL — Apelação",
+    "AR — Ação Rescisória",
+    "AREsp — Agravo em Recurso Especial",
+    "AREspe — Agravo em Recurso Especial Eleitoral",
+    "ARR — Recurso de Revista com Agravo",
+    "AgInt — Agravo Interno",
+    "AgRg — Agravo Regimental",
+    "E — Embargos",
+    "EDcl — Embargos de Declaração",
+    "HC — Habeas Corpus",
+    "RE — Recurso Extraordinário",
+    "REsp — Recurso Especial",
+    "REspe — Recurso Especial Eleitoral",
+    "RHC — Recurso em Habeas Corpus",
+    "RMS — Recurso em Mandado de Segurança",
+    "RR — Recurso de Revista",
+    "RSE — Recurso em Sentido Estrito",
+    "Rcl — Reclamação",
+    "Rp — Representação",
+    "SLS — Suspensão de Liminar e de Sentença",
+]
 Diploma = Literal[
     "Constituição Federal",
     "Código Civil",
@@ -93,6 +116,18 @@ Diploma = Literal[
     "Código Eleitoral",
     "Consolidação das Leis do Trabalho",
     "Lei Complementar",
+    "Lei",
+]
+DiplomaAgente = Literal[
+    "CF — Constituição Federal",
+    "CC — Código Civil",
+    "CDC — Código de Defesa do Consumidor",
+    "CPC — Código de Processo Civil",
+    "CPP — Código de Processo Penal",
+    "CPM — Código Penal Militar",
+    "CE — Código Eleitoral",
+    "CLT — Consolidação das Leis do Trabalho",
+    "LC — Lei Complementar",
     "Lei",
 ]
 
@@ -230,11 +265,11 @@ class ConsultaJurisprudenciaAgente(Contract):
     def normalizar_identificadores(cls, valor: object) -> str | None:
         return re.sub(r"\D", "", str(valor or "")) or None
 
-    classe_processual: ClasseProcessual | None = Field(
+    classe_processual: ClasseProcessualAgente | None = Field(
         default=None,
-        description="Classe do processo ou recurso principal, independentemente da cadeia.",
+        description="Classe do processo ou recurso principal. A última classe da cadeia recursal.",
     )
-    cadeia_recursal: list[ClasseProcessual] | None = Field(
+    cadeia_recursal: list[ClasseProcessualAgente] | None = Field(
         default=None,
         description="Todas as classes citadas, sem ordem nem repetições.",
     )
@@ -257,7 +292,7 @@ class ConsultaJurisprudenciaAgente(Contract):
         default=None,
         ge=1,
         le=9999,
-        description="Ano do julgamento, não o ano contido no número CNJ.",
+        description="Ano do julgamento",
     )
     relator: str | None = Field(
         default=None, description="Nome do relator como aparece na citação."
@@ -276,7 +311,29 @@ class ConsultaJurisprudenciaAgente(Contract):
 class ConsultaJurisprudencia(ConsultaJurisprudenciaAgente):
     """Consulta de jurisprudência normalizada para busca na base canônica."""
 
+    classe_processual: ClasseProcessual | None = None
+    cadeia_recursal: list[ClasseProcessual] | None = None
     relator_norm: str | None = None
+
+    @field_validator("classe_processual", mode="before")
+    @classmethod
+    def normalizar_classe(cls, valor: object) -> object:
+        return valor.split(" — ", 1)[0] if isinstance(valor, str) else valor
+
+    @field_validator("cadeia_recursal", mode="before")
+    @classmethod
+    def normalizar_classes(cls, valor: object) -> object:
+        if not isinstance(valor, list):
+            return valor
+        return [
+            item.split(" — ", 1)[0] if isinstance(item, str) else item for item in valor
+        ]
+
+    @model_validator(mode="after")
+    def anular_ano_de_cnj(self) -> ConsultaJurisprudencia:
+        if self.numero_processo_cnj is not None:
+            self.ano = None
+        return self
 
     @field_validator(
         "numero_processo_cnj", "numero_classe_tribunal", "numero_registro_tribunal"
@@ -292,7 +349,9 @@ class ConsultaJurisprudencia(ConsultaJurisprudenciaAgente):
         return valor
 
 
-class ConsultaLegislacao(Contract):
+class ConsultaLegislacaoAgente(Contract):
+    """Entidades de legislação solicitadas ao modelo."""
+
     numero_artigo: str | None = Field(
         default=None, description="Número do artigo sem o prefixo 'Art.'."
     )
@@ -302,8 +361,8 @@ class ConsultaLegislacao(Contract):
     def normalizar_numero_artigo(cls, valor: str | None) -> str | None:
         return re.sub(r"\D", "", valor or "") or None
 
-    diploma: Diploma | None = Field(
-        default=None, description="Nome canônico do diploma entre as opções permitidas."
+    diploma: DiplomaAgente | None = Field(
+        default=None, description="Sigla e nome canônico do diploma."
     )
     numero_diploma: str | None = Field(
         default=None, description="Número do diploma somente com dígitos."
@@ -317,6 +376,17 @@ class ConsultaLegislacao(Contract):
     ano_diploma: int | None = Field(
         default=None, ge=1, le=9999, description="Ano do diploma com quatro dígitos."
     )
+
+
+class ConsultaLegislacao(ConsultaLegislacaoAgente):
+    """Consulta de legislação normalizada para busca na base canônica."""
+
+    diploma: Diploma | None = None
+
+    @field_validator("diploma", mode="before")
+    @classmethod
+    def normalizar_diploma(cls, valor: object) -> object:
+        return valor.split(" — ", 1)[-1] if isinstance(valor, str) else valor
 
 
 class CandidatoEntidades(Contract):
@@ -421,7 +491,7 @@ class ExtratorEntidadesAsync(Protocol):
     async def extrair_auditada_async(
         self,
         candidato: CandidatoCitacao,
-    ) -> tuple[ConsultaJurisprudencia | ConsultaLegislacao, dict[str, Any]]: ...
+    ) -> tuple[ConsultaJurisprudencia | ConsultaLegislacao, list[dict[str, Any]]]: ...
 
 
 class VerificadorConsulta(Protocol):
