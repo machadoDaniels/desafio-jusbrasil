@@ -24,9 +24,13 @@ from desafio_jusbrasil.contracts import DocumentoCompletude
 from desafio_jusbrasil.utils import listar_resultados
 
 
+def _pasta_etapa(pasta: Path) -> Path:
+    etapa = pasta / "02-completeness"
+    return etapa if etapa.is_dir() else pasta
+
+
 def _ler(pasta: Path) -> dict[str, DocumentoCompletude]:
-    if (pasta / "02-completeness").is_dir():
-        pasta = pasta / "02-completeness"
+    pasta = _pasta_etapa(pasta)
     return {
         documento.documento_id: documento
         for arquivo in listar_resultados(pasta)
@@ -57,6 +61,7 @@ def main() -> None:
 
     golds = _ler(args.gold)
     preditos = _ler(args.predicoes)
+    pasta_predicoes = _pasta_etapa(args.predicoes)
     casados = corretos = total_gold = total_predito = 0
 
     for documento_id, gold in golds.items():
@@ -83,21 +88,20 @@ def main() -> None:
     precisao = _dividir(corretos, total_predito)
     recall = _dividir(corretos, total_gold)
     f1 = 2 * precisao * recall / (precisao + recall) if precisao + recall else 0.0
-    print(
-        json.dumps(
-            {
-                "spans_casados": casados,
-                "decisoes_corretas": corretos,
-                "preditos": total_predito,
-                "golds": total_gold,
-                "acuracia_nos_pares": _dividir(corretos, casados),
-                "precisao_end_to_end": precisao,
-                "recall_end_to_end": recall,
-                "f1_end_to_end": f1,
-            },
-            indent=2,
-            ensure_ascii=False,
-        )
+    relatorio = {
+        "spans_casados": casados,
+        "decisoes_corretas": corretos,
+        "preditos": total_predito,
+        "golds": total_gold,
+        "acuracia_nos_pares": _dividir(corretos, casados),
+        "precisao_end_to_end": precisao,
+        "recall_end_to_end": recall,
+        "f1_end_to_end": f1,
+    }
+    pasta_predicoes.mkdir(parents=True, exist_ok=True)
+    (pasta_predicoes / "avaliacao.json").write_text(
+        json.dumps(relatorio, ensure_ascii=False, indent=2) + "\n",
+        encoding="utf-8",
     )
 
 

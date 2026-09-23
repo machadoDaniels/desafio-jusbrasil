@@ -24,9 +24,13 @@ from desafio_jusbrasil.contracts import DocumentoExtraido
 from desafio_jusbrasil.utils import listar_resultados
 
 
+def _pasta_etapa(pasta: Path) -> Path:
+    etapa = pasta / "01-extraction"
+    return etapa if etapa.is_dir() else pasta
+
+
 def _ler(pasta: Path) -> dict[str, DocumentoExtraido]:
-    if (pasta / "01-extraction").is_dir():
-        pasta = pasta / "01-extraction"
+    pasta = _pasta_etapa(pasta)
     return {
         documento.documento_id: documento
         for arquivo in listar_resultados(pasta)
@@ -57,6 +61,7 @@ def main() -> None:
 
     golds = _ler(args.gold)
     preditos = _ler(args.predicoes)
+    pasta_predicoes = _pasta_etapa(args.predicoes)
     casados = tipos_corretos = total_gold = total_predito = 0
 
     for documento_id, gold in golds.items():
@@ -81,20 +86,19 @@ def main() -> None:
     precisao = _dividir(casados, total_predito)
     recall = _dividir(casados, total_gold)
     f1 = 2 * precisao * recall / (precisao + recall) if precisao + recall else 0.0
-    print(
-        json.dumps(
-            {
-                "spans_casados": casados,
-                "preditos": total_predito,
-                "golds": total_gold,
-                "precisao": precisao,
-                "recall": recall,
-                "f1": f1,
-                "acuracia_tipo_nos_pares": _dividir(tipos_corretos, casados),
-            },
-            indent=2,
-            ensure_ascii=False,
-        )
+    relatorio = {
+        "spans_casados": casados,
+        "preditos": total_predito,
+        "golds": total_gold,
+        "precisao": precisao,
+        "recall": recall,
+        "f1": f1,
+        "acuracia_tipo_nos_pares": _dividir(tipos_corretos, casados),
+    }
+    pasta_predicoes.mkdir(parents=True, exist_ok=True)
+    (pasta_predicoes / "avaliacao.json").write_text(
+        json.dumps(relatorio, ensure_ascii=False, indent=2) + "\n",
+        encoding="utf-8",
     )
 
 

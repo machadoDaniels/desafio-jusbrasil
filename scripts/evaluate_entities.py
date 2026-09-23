@@ -40,7 +40,7 @@ _CAMPOS = {
         "tribunal",
         "uf",
         "ano",
-        "relator",
+        "relator_norm",
         "numero_sumula",
         "sumula_vinculante",
     ),
@@ -48,7 +48,6 @@ _CAMPOS = {
         "numero_artigo",
         "diploma",
         "numero_diploma",
-        "ano_diploma",
     ),
 }
 
@@ -79,9 +78,30 @@ def _nivel(documento_id: str) -> str:
 
 
 def _valor_comparavel(campo: str, valor: Any) -> Any:
-    if campo == "cadeia_recursal" and valor is not None:
+    if (
+        campo in {"cadeia_recursal", "sequencias_numericas_identificadoras"}
+        and valor is not None
+    ):
         return frozenset(valor)
     return valor
+
+
+def _valor_campo(
+    consulta: ConsultaJurisprudencia | ConsultaLegislacao | None,
+    campo: str,
+) -> Any:
+    if consulta is None:
+        return None
+    if campo == "sequencias_numericas_identificadoras":
+        return [
+            valor
+            for valor in (
+                getattr(consulta, "numero_classe_tribunal", None),
+                getattr(consulta, "numero_registro_tribunal", None),
+            )
+            if valor is not None
+        ] or None
+    return getattr(consulta, campo, None)
 
 
 def _comparar_campos(
@@ -92,8 +112,8 @@ def _comparar_campos(
     divergentes = []
     valores = {}
     for campo in _CAMPOS[tipo]:
-        valor_esperado = getattr(esperado, campo)
-        valor_obtido = getattr(obtido, campo, None) if obtido is not None else None
+        valor_esperado = _valor_campo(esperado, campo)
+        valor_obtido = _valor_campo(obtido, campo)
         valores[campo] = (valor_esperado, valor_obtido)
         if _valor_comparavel(campo, valor_esperado) != _valor_comparavel(
             campo, valor_obtido
@@ -128,7 +148,8 @@ def _metricas_consultas(acumulador: dict[str, int]) -> dict[str, int | float]:
 
 def _metricas_campos(
     contagens: dict[str, Counter[str]],
-) -> dict[str, dict[str, int | float]]:
+    documentos_com_erro: dict[str, set[str]],
+) -> dict[str, dict[str, Any]]:
     resultado = {}
     for campo, valores in sorted(contagens.items()):
         resultado[campo] = {
@@ -144,6 +165,7 @@ def _metricas_campos(
             "recall_valores": _dividir(
                 valores["valores_corretos"], valores["valores_esperados"]
             ),
+            "documentos_com_erro": sorted(documentos_com_erro.get(campo, set())),
         }
     return resultado
 
@@ -170,6 +192,7 @@ def main() -> None:
     por_tipo: dict[str, dict[str, int]] = {}
     por_nivel: dict[str, dict[str, int]] = {}
     campos: dict[str, Counter[str]] = {}
+    documentos_com_erro_por_campo: dict[str, set[str]] = {}
     documentos_incorretos = []
 
     for documento_id, gold in golds.items():
@@ -240,6 +263,10 @@ def main() -> None:
                     contador["valores_corretos"] += (
                         esperado_preenchido and obtido_preenchido and igual
                     )
+                    if not igual:
+                        documentos_com_erro_por_campo.setdefault(chave, set()).add(
+                            documento_id
+                        )
                 if correto:
                     for acumulador in (global_, acumulador_nivel, acumulador_tipo):
                         acumulador["consultas_exatas"] += 1
@@ -289,7 +316,7 @@ def main() -> None:
 
     metricas = {
         **_metricas_consultas(global_),
-        "metricas_por_campo": _metricas_campos(campos),
+        "metricas_por_campo": _metricas_campos(campos, documentos_com_erro_por_campo),
         "metricas_por_nivel": {
             chave: _metricas_consultas(valor)
             for chave, valor in sorted(por_nivel.items())
@@ -305,7 +332,6 @@ def main() -> None:
         json.dumps(relatorio, ensure_ascii=False, indent=2) + "\n",
         encoding="utf-8",
     )
-    print(json.dumps(metricas, ensure_ascii=False, indent=2))
 
 
 if __name__ == "__main__":
