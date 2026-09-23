@@ -203,17 +203,23 @@ class ConsultaJurisprudenciaAgente(Contract):
     )
     numero_classe_tribunal: str | None = Field(
         default=None,
+        pattern=r"^\d+$",
         description=(
-            "Número sequencial do feito junto da classe do tribunal, somente com dígitos: "
-            "por exemplo, Rcl 76532 ou REsp 1741784."
+            "Somente os dígitos do número sequencial associado à classe no tribunal. "
+            "Não inclua classe, pontuação, UF ou número de registro. Exemplos: em "
+            "'Rcl 68.244/SP', retorne '68244'; em 'REsp 1.741.784', retorne '1741784'."
         ),
+        examples=["68244", "1741784"],
     )
     numero_registro_tribunal: str | None = Field(
         default=None,
+        pattern=r"^\d+$",
         description=(
-            "Número de registro do tribunal, somente com dígitos: por exemplo, o STJ "
-            "2022/0187319-4 vira 202201873194."
+            "Somente os dígitos do número de registro interno explicitamente apresentado "
+            "no formato AAAA/NNNNNNN-D. Não use o número associado à classe. Exemplos: "
+            "'2022/0187319-4' vira '202201873194'; '2018/0116304-1' vira '201801163041'."
         ),
+        examples=["202201873194", "201801163041"],
     )
     classe_processual: ClasseProcessual | None = Field(
         default=None,
