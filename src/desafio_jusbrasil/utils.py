@@ -64,7 +64,7 @@ def escrever_saida_documento(
 def escrever_manifesto_etapa(
     destino: Path,
     etapa: str,
-    config: StageConfig,
+    config: StageConfig | None = None,
 ) -> None:
     """Registra a configuração efetiva da etapa junto aos checkpoints."""
     destino.mkdir(parents=True, exist_ok=True)
@@ -72,7 +72,7 @@ def escrever_manifesto_etapa(
         "etapa": etapa,
         "gerado_em": datetime.now(UTC).isoformat(),
         "formato_checkpoint": "um JSON por documento",
-        "configuracao_modelo": config.model_dump(mode="json"),
+        "configuracao_modelo": config.model_dump(mode="json") if config else None,
     }
     (destino / "manifest.json").write_text(
         json.dumps(manifesto, ensure_ascii=False, indent=2) + "\n",
@@ -80,24 +80,37 @@ def escrever_manifesto_etapa(
     )
 
 
+def complementar_auditoria(
+    auditoria: dict[str, Any],
+    **detalhes: Any,
+) -> dict[str, Any]:
+    """Adiciona dados derivados mantendo input e output ao final."""
+    return {
+        **{
+            chave: valor
+            for chave, valor in auditoria.items()
+            if chave not in {"input", "output"}
+        },
+        **detalhes,
+        "input": auditoria["input"],
+        "output": auditoria["output"],
+    }
+
+
 def criar_auditoria(
     requisicao: dict[str, Any],
     resposta: Any,
     response_format: type[Contract],
-    estruturada: Any,
     **detalhes: Any,
 ) -> dict[str, Any]:
     """Monta a auditoria serializável de uma chamada estruturada."""
     entrada = {nome: valor for nome, valor in requisicao.items() if valor is not omit}
     entrada["response_format"] = response_format.model_json_schema()
     return {
+        **detalhes,
         "input": entrada,
-        "output": {
-            "bruta": resposta.model_dump(
-                mode="json",
-                exclude={"choices": {"__all__": {"message": {"parsed"}}}},
-            ),
-            "estruturada": estruturada,
-            **detalhes,
-        },
+        "output": resposta.model_dump(
+            mode="json",
+            exclude={"choices": {"__all__": {"message": {"parsed"}}}},
+        ),
     }
