@@ -211,9 +211,8 @@ class VerificadorVeracidade:
         # Artigo: aceita as três grafias armazenáveis do ordinal.
         if not consulta.numero_artigo or "numero_artigo" not in colunas:
             return None
-        artigo = re.sub(
-            r"^art(?:igo)?\.?\s*", "", consulta.numero_artigo, flags=re.IGNORECASE
-        )
+        artigo = consulta.numero_artigo
+
         artigo_sem_ordinal = artigo.rstrip("º°")
         variantes = list(
             dict.fromkeys([artigo, artigo_sem_ordinal, artigo_sem_ordinal + "º"])
