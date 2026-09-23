@@ -7,7 +7,6 @@ from typing import Literal
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 type NaturezaDocumento = Literal["acordao", "sumula", "dispositivo"]
-type FormatoNumero = Literal["cnj", "classico", "sem_numero"]
 type UF = Literal[
     "AC",
     "AL",
@@ -95,21 +94,26 @@ class DocumentoFonte(Contract):
 class _MetadadosAcordaoAgente(Contract):
     """Metadados de acórdão que devem ser extraídos pelo agente."""
 
-    numero_processo: str | None = Field(
+    numero_processo_cnj: str | None = Field(
         default=None,
         description=(
-            "Número do processo contendo somente dígitos ASCII. Para o padrão CNJ, "
-            "converta NNNNNNN-DD.AAAA.J.TR.OOOO em exatamente 20 dígitos, preservando "
-            "e completando os zeros à esquerda do primeiro bloco. Para números clássicos, "
-            "apenas remova a pontuação. Use null quando não houver número no documento."
+            "Número único CNJ do processo julgado, somente com 20 dígitos. Não extraia "
+            "CNJ de processo apenas mencionado no texto."
         ),
     )
-    formato_numero: FormatoNumero = Field(
+    numero_classe_tribunal: str | None = Field(
+        default=None,
         description=(
-            "Formato estrutural de numero_processo: 'cnj' somente para o padrão "
-            "NNNNNNN-DD.AAAA.J.TR.OOOO com 20 dígitos; 'classico' para qualquer outro "
-            "número processual; 'sem_numero' quando numero_processo for null."
-        )
+            "Número sequencial do feito junto da classe do tribunal, somente com dígitos: "
+            "por exemplo, Rcl 76532 ou REsp 1741784."
+        ),
+    )
+    numero_registro_tribunal: str | None = Field(
+        default=None,
+        description=(
+            "Número de registro do tribunal, somente com dígitos: por exemplo, o STJ "
+            "2022/0187319-4 vira 202201873194."
+        ),
     )
     classe_processual: ClasseProcessual | None = Field(
         default=None,
@@ -122,8 +126,7 @@ class _MetadadosAcordaoAgente(Contract):
     cadeia_recursal: list[ClasseProcessual] | None = Field(
         default=None,
         description=(
-            "Todas as classes processuais explicitamente presentes na cadeia recursal, "
-            "sem ordem nem repetições. Deve incluir classe_processual quando ela não for "
+            "Todas as classes processuais explicitamente presentes na cadeia recursal. Deve incluir classe_processual quando ela não for "
             "null."
         ),
     )
@@ -144,24 +147,18 @@ class _MetadadosAcordaoAgente(Contract):
         ),
     )
 
-    @model_validator(mode="after")
-    def validar_numero_processo(self) -> _MetadadosAcordaoAgente:
-        if self.numero_processo is None:
-            self.formato_numero = "sem_numero"
-            return self
-        if not self.numero_processo.isascii() or not self.numero_processo.isdigit():
-            raise ValueError("numero_processo deve conter somente dígitos ASCII")
-
-        tamanho = len(self.numero_processo)
-        self.formato_numero = "cnj" if tamanho == 20 else "classico"
-        if self.formato_numero == "classico":
-            if not 1 <= tamanho <= 19:
-                raise ValueError(
-                    "numero_processo clássico deve ter entre 1 e 19 dígitos"
-                )
-            return self
-
-        return self
+    @field_validator(
+        "numero_processo_cnj", "numero_classe_tribunal", "numero_registro_tribunal"
+    )
+    @classmethod
+    def validar_numeros(cls, valor: str | None, info: object) -> str | None:
+        if valor is None:
+            return None
+        if not valor.isascii() or not valor.isdigit():
+            raise ValueError("números devem conter somente dígitos ASCII")
+        if getattr(info, "field_name") == "numero_processo_cnj" and len(valor) != 20:
+            raise ValueError("numero_processo_cnj deve conter 20 dígitos")
+        return valor
 
     @model_validator(mode="after")
     def validar_classe(self) -> _MetadadosAcordaoAgente:

@@ -12,7 +12,7 @@ from typing import Any
 from openai import AsyncOpenAI, OpenAIError, omit
 from pydantic import ValidationError
 
-from ..utils import normalizar_numero_processo
+from ..utils import normalizar_numero_cnj
 from .contracts import (
     Contract,
     DocumentoEnriquecido,
@@ -28,10 +28,11 @@ _LOG = logging.getLogger(__name__)
 
 _PROMPTS = {
     "acordao": """Extraia somente metadados jurídicos explicitamente sustentados pelo documento.
-Não use conhecimento externo e não invente valores. Retorne número do processo somente com
-algarismos; classifique-o como cnj, classico ou sem_numero. Extraia a classe principal, todas as
-classes da cadeia recursal e a UF. A cadeia não tem ordem nem repetições. Campos ausentes
-devem ser nulos.""",
+Não use conhecimento externo e não invente valores. Extraia separadamente o CNJ do processo
+julgado, o número sequencial junto da classe do tribunal e o número de registro do tribunal;
+não use CNJ de processo apenas mencionado. Retorne números somente com algarismos. Extraia a
+classe principal, todas as classes da cadeia recursal e a UF. A cadeia não tem ordem nem
+repetições. Campos ausentes devem ser nulos.""",
     "sumula": """Extraia somente os metadados explicitamente sustentados pela súmula. Não use
 conhecimento externo e não invente valores. Informe o número da súmula e se ela é vinculante;
 use nulo quando o documento não sustentar o campo.""",
@@ -93,10 +94,9 @@ def normalizar_campos(
     """Aplica as mesmas regras determinísticas a respostas novas e checkpoints."""
     if documento.natureza == "acordao":
         dados = campos.model_dump(exclude={"relator_norm"})
-        numero, formato = normalizar_numero_processo(
-            campos.numero_processo, documento.texto
+        dados["numero_processo_cnj"] = normalizar_numero_cnj(
+            campos.numero_processo_cnj, documento.texto
         )
-        dados.update(numero_processo=numero, formato_numero=formato)
         return MetadadosAcordao(**dados)
     if documento.natureza == "sumula":
         dados = campos.model_dump()
