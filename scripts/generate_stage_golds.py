@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import argparse
 import csv
+import re
 import shutil
 import sys
 from pathlib import Path
@@ -26,26 +27,115 @@ from desafio_jusbrasil.contracts import (
     CandidatoAnalisado,
     CandidatoCitacao,
     CandidatoClassificado,
+    CandidatoEntidades,
     Classificacao,
+    ConsultaJurisprudencia,
+    ConsultaLegislacao,
     DocumentoClassificado,
     DocumentoCompletude,
+    DocumentoEntidades,
     DocumentoExtraido,
     ResultadoCompletude,
     ResultadoVeracidade,
     TipoCitacao,
 )
+from desafio_jusbrasil.utils import normalizar_numero_cnj
 
-ETAPAS = ("01-extraction", "02-completeness", "03-veracity")
+ETAPAS = ("01-extraction", "02-completeness", "03-entities", "04-veracity")
 
 
 def _salvar(
     destino: Path,
-    documento: DocumentoExtraido | DocumentoCompletude | DocumentoClassificado,
+    documento: (
+        DocumentoExtraido
+        | DocumentoCompletude
+        | DocumentoEntidades
+        | DocumentoClassificado
+    ),
 ) -> None:
-    destino.mkdir(parents=True, exist_ok=True)
-    (destino / f"{documento.documento_id}.json").write_text(
+    pasta = destino / documento.documento_id
+    pasta.mkdir(parents=True, exist_ok=True)
+    (pasta / "resultado.json").write_text(
         documento.model_dump_json(indent=2, exclude_none=True) + "\n",
         encoding="utf-8",
+    )
+
+
+def _opcional(valor: str) -> str | None:
+    valor = valor.strip()
+    return valor or None
+
+
+def _diploma(valor: str) -> tuple[str | None, str | None, int | None]:
+    if not valor:
+        return None, None, None
+    nomes = {
+        "CF": "Constituição Federal",
+        "CLT": "Consolidação das Leis do Trabalho",
+        "CPC": "Código de Processo Civil",
+        "CDC": "Código de Defesa do Consumidor",
+        "LC": "Lei Complementar",
+        "Codigo Eleitoral": "Código Eleitoral",
+        "CPM": "Código Penal Militar",
+        "CC": "Código Civil",
+        "CPP": "Código de Processo Penal",
+    }
+    sigla = valor.split("/")[0].split(" (")[0]
+    for prefixo in (
+        "CF",
+        "CPC",
+        "CLT",
+        "CDC",
+        "LC",
+        "Codigo Eleitoral",
+        "CPM",
+        "CC",
+        "CPP",
+    ):
+        if valor.startswith(prefixo):
+            sigla = prefixo
+            break
+    if valor.startswith("Lei "):
+        sigla = "Lei"
+    nome = nomes.get(sigla, sigla)
+    numeros = re.search(r"(\d[\d.]*)/(\d{4})", valor)
+    numero = numeros.group(1) if numeros and sigla != "CF" else None
+    ano = int(numeros.group(2)) if numeros else None
+    return nome, numero, ano
+
+
+def _campos_entidades(anotacao: dict[str, str], trecho: str):
+    if anotacao["tipo"] == "jurisprudencia":
+        sumula = _opcional(anotacao["numero_da_sumula"])
+        numero_bruto = _opcional(anotacao["numero_do_processo"])
+        numero_cnj = normalizar_numero_cnj(numero_bruto, trecho)
+        numero_classe = (
+            None if numero_cnj else re.sub(r"\D", "", numero_bruto or "") or None
+        )
+        cadeia = (
+            anotacao["cadeia_recursal"].split(">")
+            if anotacao["cadeia_recursal"]
+            else None
+        )
+        return ConsultaJurisprudencia(
+            natureza="sumula" if sumula else "acordao",
+            numero_processo_cnj=numero_cnj,
+            sequencias_numericas_identificadoras=[numero_classe] if numero_classe else None,
+            classe_processual=cadeia[-1] if cadeia else None,
+            cadeia_recursal=cadeia,
+            tribunal=_opcional(anotacao["tribunal"]),
+            uf=_opcional(anotacao["uf"]),
+            ano=int(anotacao["data"]) if anotacao["data"] else None,
+            relator=_opcional(anotacao["relator"]),
+            numero_sumula=int(sumula.split()[0]) if sumula else None,
+            sumula_vinculante="vinculante" in sumula.casefold() if sumula else None,
+        )
+    diploma, numero, ano = _diploma(anotacao["diploma_legal"])
+    return ConsultaLegislacao(
+        numero_artigo=_opcional(anotacao["numero_do_artigo"]),
+        diploma=diploma,
+        numero_diploma=numero,
+        ano_diploma=ano,
     )
 
 
@@ -55,9 +145,16 @@ def gerar(dataset: Path, destino: Path) -> None:
         dtype=str,
         keep_default_na=False,
     )
+    anotacoes = pd.read_csv(
+        dataset / "goldenset_offsets_anotado_gustavo.csv",
+        dtype=str,
+        keep_default_na=False,
+    ).set_index(["documento_id", "citacao_id"])
 
     for etapa in ETAPAS:
         shutil.rmtree(destino / etapa, ignore_errors=True)
+    shutil.rmtree(destino / "03-veracity", ignore_errors=True)
+    shutil.rmtree(destino / "03-entitys", ignore_errors=True)
 
     submissao = []
     for documento_id, linhas in gold.groupby("documento_id", sort=True):
@@ -81,6 +178,7 @@ def gerar(dataset: Path, destino: Path) -> None:
             candidatos=candidatos,
         )
         analisados = []
+        entidades = []
         classificados = []
         for linha, candidato in zip(linhas.itertuples(), candidatos, strict=True):
             classificacao = Classificacao(linha.classificacao)
@@ -88,6 +186,14 @@ def gerar(dataset: Path, destino: Path) -> None:
             completude = ResultadoCompletude(completa=completa)
             analisados.append(
                 CandidatoAnalisado(candidato=candidato, completude=completude)
+            )
+            anotacao = anotacoes.loc[(documento_id, linha.citacao_id)].to_dict()
+            entidades.append(
+                CandidatoEntidades(
+                    candidato=candidato,
+                    completude=completude,
+                    campos_extraidos=_campos_entidades(anotacao, candidato.trecho),
+                )
             )
             classificados.append(
                 CandidatoClassificado(
@@ -115,7 +221,14 @@ def gerar(dataset: Path, destino: Path) -> None:
             ),
         )
         _salvar(
-            destino / "03-veracity",
+            destino / "03-entities",
+            DocumentoEntidades(
+                documento_id=documento_id,
+                candidatos=entidades,
+            ),
+        )
+        _salvar(
+            destino / "04-veracity",
             DocumentoClassificado(
                 documento_id=documento_id,
                 texto=texto,
@@ -139,7 +252,7 @@ def gerar(dataset: Path, destino: Path) -> None:
         escritor.writerows(submissao)
 
     for etapa in ETAPAS:
-        arquivos = list((destino / etapa).glob("*.json"))
+        arquivos = list((destino / etapa).glob("*/resultado.json"))
         print(f"{destino / etapa}: {len(arquivos)} documentos")
     print(f"citações: {len(gold)}")
 

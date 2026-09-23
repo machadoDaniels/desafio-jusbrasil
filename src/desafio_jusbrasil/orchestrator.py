@@ -2,33 +2,38 @@
 
 from __future__ import annotations
 
+import asyncio
 from importlib import import_module
 from pathlib import Path
 
 from dotenv import load_dotenv
-from openai import OpenAI
+from openai import AsyncOpenAI, OpenAI
 from tqdm import tqdm
 
 from .contracts import (
     Classificacao,
     ClassificadorCompletude,
-    ClassificadorVeracidade,
     DocumentoClassificado,
     DocumentoPredito,
     ExtratorCandidatos,
+    ExtratorEntidadesAsync,
     PipelineConfig,
     Predicao,
     Resolucao,
+    VerificadorConsulta,
 )
 from .utils import escrever_manifesto_etapa, listar_resultados
 
 _extractor = import_module(".1_extractor", __package__)
 _completeness = import_module(".2_completeness", __package__)
-_veracity = import_module(".3_veracity", __package__)
+_entities = import_module(".3_entities", __package__)
+_veracity = import_module(".4_veracity", __package__)
 AgenteExtrator = _extractor.AgenteExtrator
 executar_extracao = _extractor.executar_extracao
 AgenteCompletude = _completeness.AgenteCompletude
 executar_completude = _completeness.executar_completude
+AgenteExtratorEntidades = _entities.AgenteExtratorEntidades
+executar_entities_async = _entities.executar_entities_async
 VerificadorVeracidade = _veracity.VerificadorVeracidade
 executar_veracidade = _veracity.executar_veracidade
 
@@ -76,25 +81,36 @@ class Orquestrador:
         self,
         extrator: ExtratorCandidatos,
         completude: ClassificadorCompletude,
-        veracidade: ClassificadorVeracidade,
+        extrator_consulta: ExtratorEntidadesAsync,
+        verificador: VerificadorConsulta,
+        entities_max_concurrency: int = 10,
     ) -> None:
         self._extrator = extrator
         self._completude = completude
-        self._veracidade = veracidade
+        self._extrator_consulta = extrator_consulta
+        self._verificador = verificador
+        self._entities_max_concurrency = entities_max_concurrency
 
-    def executar(self, pasta_txt: Path, workdir: Path) -> None:
+    async def executar(self, pasta_txt: Path, workdir: Path) -> None:
         workdir.mkdir(parents=True, exist_ok=True)
         extracao = workdir / "01-extraction"
         completude = workdir / "02-completeness"
-        veracidade = workdir / "03-veracity"
+        entities = workdir / "03-entities"
+        veracidade = workdir / "04-veracity"
 
         executar_extracao(pasta_txt, extracao, self._extrator)
         executar_completude(extracao, completude, self._completude, pasta_txt)
-        executar_veracidade(completude, veracidade, self._veracidade)
+        await executar_entities_async(
+            completude,
+            entities,
+            self._extrator_consulta,
+            max_concurrency=self._entities_max_concurrency,
+        )
+        executar_veracidade(entities, veracidade, self._verificador)
         materializar(veracidade, workdir / "predictions")
 
 
-def main() -> None:
+async def _main() -> None:
     load_dotenv()
     config = PipelineConfig.from_yaml(Path("pipeline.yaml"))
     escrever_manifesto_etapa(
@@ -104,25 +120,29 @@ def main() -> None:
         config.workdir / "02-completeness", "completeness", config.completeness
     )
     escrever_manifesto_etapa(
-        config.workdir / "03-veracity", "veracity", config.veracity
+        config.workdir / "03-entities", "entities", config.entities
     )
-    orquestrador = Orquestrador(
-        AgenteExtrator(
-            OpenAI(base_url=config.extractor.base_url),
-            config.extractor,
-        ),
-        AgenteCompletude(
-            OpenAI(base_url=config.completeness.base_url),
-            config.completeness,
-        ),
-        VerificadorVeracidade(
-            OpenAI(base_url=config.veracity.base_url),
-            config.veracity,
-            config.database,
-        ),
-    )
-    orquestrador.executar(config.input_dir, config.workdir)
+    escrever_manifesto_etapa(config.workdir / "04-veracity", "veracity")
+    async with AsyncOpenAI(base_url=config.entities.base_url) as cliente_entities:
+        orquestrador = Orquestrador(
+            AgenteExtrator(
+                OpenAI(base_url=config.extractor.base_url),
+                config.extractor,
+            ),
+            AgenteCompletude(
+                OpenAI(base_url=config.completeness.base_url),
+                config.completeness,
+            ),
+            AgenteExtratorEntidades(cliente_entities, config.entities),
+            VerificadorVeracidade(config.database),
+            config.entities.max_concurrency,
+        )
+        await orquestrador.executar(config.input_dir, config.workdir)
     print(f"{config.workdir}: pipeline concluído")
+
+
+def main() -> None:
+    asyncio.run(_main())
 
 
 if __name__ == "__main__":

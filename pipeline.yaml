@@ -3,6 +3,9 @@ workdir: outputs/run-007-gemma-4-12b-it-qat-w4a16-ct
 database: data/desafio1_bracis_enriched.db
 
 database_preprocessing:
+  input: desafio-jusbrasil-bracis-2026/desafio1_bracis.db
+  output: data/desafio1_bracis_enriched.db
+  audit_dir: outputs/database-preprocessing/run-004
   model: gemini-3.8-flash
   base_url: https://generativelanguage.googleapis.com/v1beta/openai/
   api_key: $GEMINI_API_KEY
@@ -10,11 +13,9 @@ database_preprocessing:
   top_p: null
   top_k: null
   reasoning_effort: null
-  max_concurrency: 20
+  max_concurrency: 50
   max_retries: 3
   retry_delay_seconds: 1
-  request_interval_seconds: 0.75
-  header_char_limit: 6000
 
 extractor:
   model: google/gemma-4-12B-it-qat-w4a16-ct
@@ -38,10 +39,10 @@ completeness:
   max_concurrency: 10
 
 entities:
-  # model: google/gemma-4-12B-it-qat-w4a16-ct
-  # base_url: https://84a5-200-137-197-215.ngrok-free.app/v1
   model: google/gemma-4-12B-it-qat-w4a16-ct
   base_url: https://84a5-200-137-197-215.ngrok-free.app/v1
+  # model: gemini-3.8-flash
+  # base_url: https://generativelanguage.googleapis.com/v1beta/openai/
   temperature: null
   top_p: null
   top_k: null
@@ -49,7 +50,7 @@ entities:
   async_requests: true
   max_concurrency: 10
   max_retries: 3
-  request_timeout_seconds: 120
+  request_timeout_seconds: 30
 
 
 # Ollama: http://127.0.0.1:11434/v1 e reasoning_effort: none

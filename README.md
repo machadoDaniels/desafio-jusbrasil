@@ -134,7 +134,7 @@ Para gerar uma cópia enriquecida sem alterar o SQLite original:
 uv run python -m desafio_jusbrasil.database_preprocessing
 ```
 
-Por padrão, a entrada é `desafio-jusbrasil-bracis-2026/desafio1_bracis.db` e a saída é `data/desafio1_bracis_enriched.db`; use `--input` e `--output` para sobrescrevê-las. A configuração do agente fica em `database_preprocessing` no `pipeline.yaml`. Por padrão, auditorias, checkpoints e relatórios são gravados em `outputs/database-preprocessing/run-001`. Use `--force` somente para substituir o banco de saída; origem e destino nunca podem ser o mesmo arquivo. O processo não modifica a tabela FTS existente.
+Entrada, saída, diretório de auditoria, substituição do destino e parâmetros do agente ficam na seção `database_preprocessing` de `pipeline.yaml`. Origem e destino nunca podem ser o mesmo arquivo. O processo não modifica a tabela FTS existente.
 
 ## Checkpoints e auditoria
 
@@ -180,4 +180,4 @@ uv run python scripts/evaluate_entities.py outputs/<run> \
   --gold outputs/gold/03-entities
 ```
 
-O avaliador gera `03-entities/avaliacao.json`, um `resultado_eval.json` por documento e métricas de consulta exata por tipo, nível e campo. Em `cadeia_recursal`, a comparação ignora a ordem e preserva repetições.
+O avaliador gera `03-entities/avaliacao.json`, um `resultado_eval.json` por documento e métricas de consulta exata por tipo, nível e campo. Em `cadeia_recursal`, a comparação ignora ordem e repetições.

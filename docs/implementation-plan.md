@@ -8,7 +8,8 @@ Implementar um pipeline simples, sequencial e reiniciável:
 TXT
   → 01-extraction/
   → 02-completeness/
-  → 03-veracity/
+  → 03-entities/
+  → 04-veracity/
   → predictions/*.json
   → submission.csv
 ```
@@ -30,9 +31,11 @@ A arquitetura segue `ideia.excalidraw` e `class-diagram.mmd`, priorizando simpli
 ```text
 src/desafio_jusbrasil/
 ├── contracts.py
-├── extractor.py
-├── completeness.py
-├── veracity.py
+├── utils.py
+├── 1_extractor.py
+├── 2_completeness.py
+├── 3_entities.py
+├── 4_veracity.py
 └── orchestrator.py
 ```
 
@@ -63,7 +66,7 @@ completeness:
   async_requests: true
   max_concurrency: 4
 
-veracity:
+entities:
   model: gpt-4.1-mini
   base_url: null
   temperature: 0
@@ -81,8 +84,24 @@ Todas as etapas escrevem no diretório de trabalho definido por `workdir` no YAM
 ```text
 outputs/run-001/
 ├── 01-extraction/
+│   └── <documento_id>/
+│       ├── resultado.json
+│       └── 0001.json
 ├── 02-completeness/
-├── 03-veracity/
+│   └── <documento_id>/
+│       ├── resultado.json
+│       ├── 0001.json
+│       └── ...
+├── 03-entities/
+│   └── <documento_id>/
+│       ├── resultado.json
+│       ├── 0001.json
+│       └── ...
+├── 04-veracity/
+│   └── <documento_id>/
+│       ├── resultado.json
+│       ├── 0001.json
+│       └── ...
 ├── predictions/
 │   ├── gen_n1_001.json
 │   ├── gen_n1_002.json
@@ -94,12 +113,14 @@ O diretório de trabalho é explícito para não misturar dados gerados com os T
 
 ## Regra para os checkpoints
 
-- Cada documento possui um arquivo `<documento_id>.json`.
+- Cada documento possui uma pasta `<documento_id>/`.
+- `resultado.json` contém somente o resultado agrupado e é consumido pela próxima etapa.
+- Em etapas com LLM, cada `000N.json` audita uma chamada; em `04-veracity`, audita uma consulta SQL.
 - Cada arquivo é um JSON válido e independente, escrito em UTF-8.
-- Os arquivos são lidos em ordem de `documento_id`.
-- Cada etapa valida o JSON recebido antes de processá-lo.
+- Os documentos são lidos em ordem de `documento_id`.
+- Cada etapa valida `resultado.json` antes de processá-lo.
 
-Manter um documento por arquivo simplifica retomada, inspeção e processamento isolado.
+Separar o checkpoint das chamadas evita duplicação e mantém a retomada e a inspeção por documento.
 
 ---
 
@@ -148,7 +169,7 @@ contracts.py
 - Regras que dependem de LLM e SQLite ficam fora deste arquivo.
 - A única operação de filesystem permitida é `PipelineConfig.from_yaml()`.
 - `contracts.py` não importa nenhum dos outros módulos do projeto.
-- `extractor.py`, `completeness.py`, `veracity.py` e `orchestrator.py` importam contratos somente deste arquivo.
+- `extractor.py`, `completeness.py`, `4_veracity.py` e `orchestrator.py` importam contratos somente deste arquivo.
 
 As interfaces ficam juntas ao final do arquivo:
 
@@ -220,11 +241,10 @@ class CandidatoCitacao(CandidatoCitacaoRequest):
 
 class DocumentoExtraido(BaseModel):
     documento_id: str
-    texto: str
     candidatos: list[CandidatoCitacao]
 ```
 
-O texto é mantido no checkpoint para que as etapas posteriores sejam independentes da pasta original.
+O texto original não é duplicado no checkpoint. A completude o relê de `input_dir` para montar o contexto.
 
 ## Implementação concreta
 
@@ -337,7 +357,6 @@ class CandidatoAnalisado(BaseModel):
 
 class DocumentoCompletude(BaseModel):
     documento_id: str
-    texto: str
     candidatos: list[CandidatoAnalisado]
 ```
 
@@ -364,7 +383,7 @@ class AgenteCompletude:
 
 ## Implementação
 
-- Ler `DocumentoExtraido` linha por linha.
+- Ler cada `DocumentoExtraido` e reler o TXT correspondente de `input_dir`.
 - Para cada candidato, obter uma janela simples:
 
 ```python
@@ -374,7 +393,7 @@ contexto = texto[max(0, inicio - 300):min(len(texto), fim + 300)]
 - Usar diretamente `OpenAI.chat.completions.parse(...)` com `ResultadoCompletude`.
 - Extrair somente campos sustentados pelo trecho ou pelo contexto.
 - Manter `consulta=None` quando `completa=False`.
-- Preservar candidato, texto e `documento_id` no checkpoint seguinte.
+- Preservar candidato e `documento_id` no checkpoint seguinte, sem duplicar o texto.
 
 ## CLI independente
 
@@ -393,151 +412,56 @@ A etapa lê `workdir/01-extraction/` e grava `workdir/02-completeness/`.
 
 ---
 
-# 3. `veracity.py`
+# 3. `3_entities.py`
 
 ## Responsabilidade
 
-Ler o resultado de completude, consultar a SQLite e salvar as classificações em `03-veracity/`.
+Ler os candidatos da completude e usar o LLM para extrair os campos estruturados necessários à busca, salvando-os em `03-entities/`.
 
-## Entrada
+A etapa usa somente chamadas assíncronas. Todas as citações acionam o modelo, inclusive as incompletas, pois elas podem conter entidades parciais úteis para auditoria e avaliação. A completude permanece preservada no candidato; a etapa 4 não consulta o banco quando `completa=false`.
 
-```text
-<workdir>/02-completeness/
-```
+## Contratos
 
-## Saída
-
-```text
-<workdir>/03-veracity/
-```
-
-## Contratos utilizados
-
-Definidos em `contracts.py`:
-
-```python
-class Classificacao(StrEnum):
-    REAL = "real"
-    INVENTADA = "inventada"
-    INCOMPLETA = "incompleta"
-
-
-class RegistroCanonico(BaseModel):
-    documento_id: str
-    id_canonico: int
-    tribunal: str | None = None
-    ano: int | None = None
-    relator: str | None = None
-    natureza: str
-    tipo: str
-    texto: str
-
-
-class ResultadoVeracidade(BaseModel):
-    classificacao: Classificacao
-    id_canonico: int | None = None
-    justificativa: str
-    confianca: float | None = None
-
-
-class CandidatoClassificado(BaseModel):
-    candidato: CandidatoCitacao
-    completude: ResultadoCompletude
-    veracidade: ResultadoVeracidade
-
-
-class DocumentoClassificado(BaseModel):
-    documento_id: str
-    texto: str
-    candidatos: list[CandidatoClassificado]
-```
-
-## Implementação concreta
-
-Implementa estruturalmente o `Protocol` `ClassificadorVeracidade`, definido em `contracts.py`:
-
-```python
-class AgenteVeracidade:
-    def __init__(self, modelo: BaseChatModel, database: Path) -> None:
-        self._database = database
-        ferramenta = StructuredTool.from_function(
-            func=self._buscar_para_agente,
-            args_schema=ConsultaCanonica,
-        )
-        self._agent = create_agent(
-            model=modelo,
-            tools=[ferramenta],
-            response_format=ResultadoVeracidade,
-        )
-
-    def classificar(
-        self,
-        consulta: ConsultaCanonica,
-    ) -> ResultadoVeracidade:
-        ...
-
-    def buscar(
-        self,
-        consulta: ConsultaCanonica,
-    ) -> list[RegistroCanonico]:
-        termos = self._montar_consulta_fts(consulta)
-        return self._executar_consulta(termos, consulta.tipo)
-
-    def _buscar_para_agente(self, ...) -> str:
-        ...
-
-    def _montar_consulta_fts(self, consulta: ConsultaCanonica) -> str:
-        ...
-
-    def _executar_consulta(
-        self,
-        termos: str,
-        tipo: TipoCitacao,
-    ) -> list[RegistroCanonico]:
-        ...
-```
-
-A interface expõe apenas `classificar()`. `buscar()` permanece público por ser útil para diagnóstico e testes, mas é detalhe da implementação concreta.
-
-## Implementação
-
-A busca usa `sqlite3`, mas a decisão é feita por um agente LangChain com uma única ferramenta SQL. Todos os modelos são acessados por `ChatOpenAI` em endpoints OpenAI-compatible.
-
-Para cada candidato:
-
-- se `completa=False`, produzir diretamente `incompleta`, sem invocar o agente;
-- se `completa=True`, o agente é obrigado a chamar a ferramenta SQLite;
-- o agente recebe no máximo dez registros e decide entre `real`, `inventada` e `incompleta`;
-- a resposta é validada como `ResultadoVeracidade`;
-- uma execução sem chamada da ferramenta falha explicitamente.
-
-Para `real`, `id_canonico` deve ser `documentos.id`, não `documento_id`.
+- `ConsultaJurisprudencia`: natureza, número e formato do processo, classe processual, cadeia recursal sem ordem significativa, tribunal, UF, ano, relator bruto, relator normalizado por regra e dados de súmula.
+- `ConsultaLegislacao`: número do artigo, diploma, número e ano do diploma.
+- `DocumentoEntidades`: candidato, completude anterior e campos extraídos.
 
 ## CLI independente
 
 ```bash
-uv run python -m desafio_jusbrasil.veracity
+uv run python -m desafio_jusbrasil.3_entities
 ```
 
-A etapa lê `workdir/02-completeness/` e grava `workdir/03-veracity/`.
-
-## Critério de aceite
-
-- A etapa usa um agente LangChain e uma única ferramenta SQLite.
-- A etapa roda sem executar extração ou completude novamente.
-- O agente não pode responder sem consultar a ferramenta.
-- Toda predição `real` contém um `id_canonico` válido.
+A etapa lê `workdir/02-completeness/` e grava `workdir/03-entities/`.
 
 ---
 
-# 4. `orchestrator.py`
+# 4. `4_veracity.py`
+
+## Responsabilidade
+
+Ler `03-entities/`, consultar primeiro as colunas estruturadas do banco enriquecido e usar SQL FTS5 como fallback determinístico, salvando as classificações em `04-veracity/`.
+
+Esta etapa não chama LLM. Cada arquivo numerado registra campos recebidos, SQL, parâmetros, registros e resultado. Para `real`, `id_canonico` é `documentos.id`.
+
+## CLI independente
+
+```bash
+uv run python -m desafio_jusbrasil.4_veracity
+```
+
+A etapa lê `workdir/03-entities/` e grava `workdir/04-veracity/`.
+
+---
+
+# 5. `orchestrator.py`
 
 ## Responsabilidade
 
 Oferecer duas operações:
 
 1. executar o pipeline completo, chamando as funções públicas das três etapas;
-2. materializar os JSONs finais a partir de `03-veracity/`.
+2. materializar os JSONs finais a partir de `04-veracity/`.
 
 O orquestrador não deve duplicar a lógica interna dos agentes.
 
@@ -624,13 +548,13 @@ Essa operação cria, em ordem:
 ```text
 01-extraction/
 02-completeness/
-03-veracity/
+04-veracity/
 predictions/*.json
 ```
 
 ## Materialização
 
-`veracity.materializar()` permite recriar os JSONs finais diretamente de `03-veracity/`, sem repetir as etapas anteriores.
+`veracity.materializar()` permite recriar os JSONs finais diretamente de `04-veracity/`, sem repetir as etapas anteriores.
 
 ## Conversão e avaliação local
 
@@ -768,13 +692,13 @@ Implementar `completeness.py`, sua CLI e `02-completeness/`.
 
 ## Etapa 5 — Veracidade isolada
 
-Implementar `veracity.py`, sua CLI e `03-veracity/`.
+Implementar `4_veracity.py`, sua CLI e `04-veracity/`.
 
 **Aceite:** a etapa funciona usando apenas os JSONs de completude e a SQLite.
 
 ## Etapa 6 — Materialização
 
-Implementar em `veracity.py` a conversão de `03-veracity/` para os JSONs finais.
+Implementar em `4_veracity.py` a conversão de `04-veracity/` para os JSONs finais.
 
 **Aceite:** `json_to_submission.py` aceita a pasta produzida.
 
@@ -820,7 +744,7 @@ Um único arquivo futuro, `tests/test_pipeline.py`, é suficiente.
 9. Zero resultados vira `inventada`.
 10. Ambiguidade vira `incompleta`.
 11. Um checkpoint existente permite retomar da etapa seguinte.
-12. `03-veracity/` gera JSONs aceitos pelo conversor.
+12. `04-veracity/` gera JSONs aceitos pelo conversor.
 13. Os 26 documentos geram uma submissão aceita pela métrica.
 
 ---
