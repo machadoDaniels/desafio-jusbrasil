@@ -172,25 +172,12 @@ class AgenteExtratorEntidades:
             dados.update(
                 natureza=natureza,
                 numero_processo_cnj=numero_cnj,
-                numero_classe_tribunal=(
-                    re.sub(r"\D", "", consulta.numero_classe_tribunal)
-                    if consulta.numero_classe_tribunal
-                    else None
-                ),
-                numero_registro_tribunal=(
-                    re.sub(r"\D", "", consulta.numero_registro_tribunal)
-                    if consulta.numero_registro_tribunal
-                    else None
-                ),
                 relator_norm=normalizar_relator(consulta.relator, self._relatores),
                 sumula_vinculante=vinculante,
             )
             consulta = ConsultaJurisprudencia.model_validate(dados)
         else:
-            dados = consulta.model_dump()
-            if dados["numero_diploma"] is not None:
-                dados["numero_diploma"] = re.sub(r"\D", "", dados["numero_diploma"])
-            consulta = ConsultaLegislacao.model_validate(dados)
+            consulta = ConsultaLegislacao.model_validate(consulta)
         auditoria = criar_auditoria(
             requisicao,
             resposta,

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 from enum import StrEnum
 from pathlib import Path
 from typing import Any, Literal, Protocol
@@ -221,6 +222,14 @@ class ConsultaJurisprudenciaAgente(Contract):
         ),
         examples=["202201873194", "201801163041"],
     )
+
+    @field_validator(
+        "numero_classe_tribunal", "numero_registro_tribunal", mode="before"
+    )
+    @classmethod
+    def normalizar_identificadores(cls, valor: object) -> str | None:
+        return re.sub(r"\D", "", str(valor or "")) or None
+
     classe_processual: ClasseProcessual | None = Field(
         default=None,
         description="Classe do processo ou recurso principal, independentemente da cadeia.",
@@ -287,12 +296,24 @@ class ConsultaLegislacao(Contract):
     numero_artigo: str | None = Field(
         default=None, description="Número do artigo sem o prefixo 'Art.'."
     )
+
+    @field_validator("numero_artigo")
+    @classmethod
+    def normalizar_numero_artigo(cls, valor: str | None) -> str | None:
+        return re.sub(r"\D", "", valor or "") or None
+
     diploma: Diploma | None = Field(
         default=None, description="Nome canônico do diploma entre as opções permitidas."
     )
     numero_diploma: str | None = Field(
         default=None, description="Número do diploma somente com dígitos."
     )
+
+    @field_validator("numero_diploma", mode="before")
+    @classmethod
+    def normalizar_numero_diploma(cls, valor: object) -> str | None:
+        return re.sub(r"\D", "", str(valor or "")) or None
+
     ano_diploma: int | None = Field(
         default=None, ge=1, le=9999, description="Ano do diploma com quatro dígitos."
     )
