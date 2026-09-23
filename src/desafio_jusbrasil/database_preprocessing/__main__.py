@@ -17,10 +17,19 @@ def _argumentos(argumentos: Sequence[str] | None = None) -> argparse.Namespace:
         description="Enriquece uma cópia auditável do banco canônico Jusbrasil."
     )
     parser.add_argument(
-        "--input", required=True, type=Path, help="Banco SQLite de origem"
+        "--input",
+        type=Path,
+        default=Path("desafio-jusbrasil-bracis-2026/desafio1_bracis.db"),
+        help=(
+            "Banco SQLite de origem "
+            "(padrão: desafio-jusbrasil-bracis-2026/desafio1_bracis.db)"
+        ),
     )
     parser.add_argument(
-        "--output", required=True, type=Path, help="Banco SQLite enriquecido"
+        "--output",
+        type=Path,
+        default=Path("data/desafio1_bracis_enriched.db"),
+        help="Banco SQLite enriquecido (padrão: data/desafio1_bracis_enriched.db)",
     )
     parser.add_argument(
         "--audit-dir",

@@ -15,7 +15,9 @@ from pydantic import ValidationError
 
 from ..utils import normalizar_numero_processo, normalizar_relator
 from .contracts import (
+    Contract,
     DocumentoEnriquecido,
+    DocumentoFonte,
     MetadadosAcordao,
     MetadadosDocumento,
     MetadadosSumula,
@@ -40,17 +42,9 @@ alfanuméricos do artigo. Campos ausentes devem ser nulos.""",
 }
 
 
-def _json(valor: Any) -> Any:
-    if hasattr(valor, "model_dump"):
-        return valor.model_dump(mode="json")
-    if isinstance(valor, Mapping):
-        return {str(chave): _json(item) for chave, item in valor.items()}
-    if isinstance(valor, (list, tuple)):
-        return [_json(item) for item in valor]
-    return valor
-
-
-def _entrada_agente(documento: Any, header_char_limit: int) -> dict[str, Any]:
+def _entrada_agente(
+    documento: DocumentoFonte, header_char_limit: int
+) -> dict[str, Any]:
     entrada = {
         "documento_id": documento.documento_id,
         "id": documento.id,
@@ -64,7 +58,9 @@ def _entrada_agente(documento: Any, header_char_limit: int) -> dict[str, Any]:
 
 
 def _requisicao(
-    documento: Any, contrato: type[Any], config: Mapping[str, Any]
+    documento: DocumentoFonte,
+    contrato: type[Contract],
+    config: Mapping[str, Any],
 ) -> dict[str, Any]:
     return {
         "model": config["model"],
@@ -114,7 +110,7 @@ class LimitadorTaxa:
 
 
 def normalizar_campos(
-    documento: Any,
+    documento: DocumentoFonte,
     campos: MetadadosDocumento,
     relatores: Mapping[str, str],
 ) -> MetadadosDocumento:
@@ -139,7 +135,7 @@ def normalizar_campos(
 
 
 def _input_auditoria(
-    requisicao: Mapping[str, Any], contrato: type[Any]
+    requisicao: Mapping[str, Any], contrato: type[Contract]
 ) -> dict[str, Any]:
     entrada = {
         chave: valor
@@ -151,7 +147,7 @@ def _input_auditoria(
 
 
 async def enriquecer_documento(
-    documento: Any,
+    documento: DocumentoFonte,
     *,
     cliente: AsyncOpenAI,
     config: Mapping[str, Any],
@@ -196,7 +192,7 @@ async def enriquecer_documento(
                     }
                     and valor is not None
                 },
-                "uso": _json(usage) if usage is not None else None,
+                "uso": usage.model_dump(mode="json") if usage is not None else None,
                 "input": _input_auditoria(requisicao, contrato),
                 "output": resposta.model_dump(
                     mode="json",

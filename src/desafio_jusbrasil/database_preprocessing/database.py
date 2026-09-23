@@ -323,9 +323,8 @@ def materializar_banco(
                     resultados=resultados_validados,
                 )
             os.replace(temporario, destino)
-        except BaseException:
+        finally:
             temporario.unlink(missing_ok=True)
-            raise
 
     return {
         "documentos": len(documentos_origem),
