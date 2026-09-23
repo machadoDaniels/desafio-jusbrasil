@@ -128,7 +128,7 @@ class AgenteExtrator:
             requisicao,
             resposta,
             LoteCandidatosRequest,
-            [item.model_dump(mode="json") for item in resultado],
+            campos_extraidos=[item.model_dump(mode="json") for item in resultado],
         )
 
     async def _consultar_modelo_async(

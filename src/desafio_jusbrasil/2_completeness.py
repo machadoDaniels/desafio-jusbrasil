@@ -162,13 +162,13 @@ class AgenteCompletude:
         Substitui a classe Pydantic de ``response_format`` pelo schema enviado ao
         servidor e separa a resposta bruta do resultado estruturado. O campo
         interno ``parsed`` é removido da cópia bruta porque contém um objeto
-        Pydantic não pertencente à resposta HTTP e já está em ``estruturada``.
+        Pydantic não pertencente à resposta HTTP e já está em ``resultado``.
         """
         return criar_auditoria(
             requisicao,
             resposta,
             ResultadoCompletude,
-            resultado.model_dump(mode="json"),
+            resultado=resultado.model_dump(mode="json"),
         )
 
     @staticmethod
