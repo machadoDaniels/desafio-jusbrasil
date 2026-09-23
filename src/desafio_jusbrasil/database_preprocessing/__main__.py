@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import argparse
 from pathlib import Path
 
 import yaml
@@ -15,13 +16,16 @@ def _carregar_configuracao(caminho: Path = Path("pipeline.yaml")) -> dict:
         dados = yaml.safe_load(arquivo) or {}
     configuracao = dados.get("database_preprocessing")
     if not isinstance(configuracao, dict):
-        raise TypeError("pipeline.yaml deve conter a seção database_preprocessing")
+        raise TypeError(f"{caminho} deve conter a seção database_preprocessing")
     return configuracao
 
 
 def main() -> None:
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--config", type=Path, default=Path("pipeline.yaml"))
+    args = parser.parse_args()
     load_dotenv()
-    configuracao = _carregar_configuracao()
+    configuracao = _carregar_configuracao(args.config)
     origem = Path(configuracao["input"]).resolve()
     destino = Path(configuracao["output"]).resolve()
     diretorio_auditoria = Path(configuracao["audit_dir"]).resolve()

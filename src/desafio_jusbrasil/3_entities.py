@@ -87,8 +87,18 @@ class ErroExtracaoEntidades(RuntimeError):
 _PROMPT_LEI = """Extraia os campos de identificação desta citação de legislação
 brasileira.
 
-Preencha somente dados explícitos ou decorrentes de abreviações
-jurídicas inequívocas."""
+Preencha somente dados explícitos ou decorrentes de abreviações jurídicas inequívocas.
+
+Exemplo completo — não use `Lei` como fallback quando o trecho identifica um diploma específico:
+
+Trecho: art. 1.134 da Lei nº 13.105/2015
+
+Resposta:
+{
+  "numero_artigo": "1134",
+  "diploma": "CPC — Código de Processo Civil",
+  "numero_diploma": "13105"
+}"""
 
 
 def _prompt_veracidade(tipo: TipoCitacao) -> str:

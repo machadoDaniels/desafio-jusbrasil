@@ -219,9 +219,6 @@ class VerificadorVeracidade:
             elif consulta.diploma:
                 filtros.append("diploma = ?")
                 parametros.append(consulta.diploma)
-            if consulta.ano_diploma is not None:
-                filtros.append("ano_diploma = ?")
-                parametros.append(consulta.ano_diploma)
         else:
             return None
         sql = (
@@ -364,11 +361,7 @@ class VerificadorVeracidade:
     def _normalizar_diploma(cls, consulta: ConsultaLegislacao) -> str | None:
         if consulta.numero_diploma:
             numero = cls._normalizar_numero(consulta.numero_diploma)
-            return " ".join(
-                [numero, str(consulta.ano_diploma)]
-                if consulta.ano_diploma is not None
-                else [numero]
-            )
+            return numero
         if not consulta.diploma:
             return None
         diploma = " ".join(re.findall(r"\w+", consulta.diploma)).casefold()

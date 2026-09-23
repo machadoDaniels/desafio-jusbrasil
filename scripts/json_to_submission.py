@@ -33,7 +33,7 @@ def main() -> None:
     if len(sys.argv) < 2:
         sys.exit("uso: python json_to_submission.py <pasta_com_jsons> [submission.csv]")
     pasta = Path(sys.argv[1])
-    destino = Path(sys.argv[2]) if len(sys.argv) > 2 else Path("submission.csv")
+    destino = Path(sys.argv[2]) if len(sys.argv) > 2 else Path(f"{pasta}/../submission.csv")
     arquivos = sorted(pasta.glob("*.json"))
     if not arquivos:
         sys.exit(f"nenhum .json encontrado em {pasta}")

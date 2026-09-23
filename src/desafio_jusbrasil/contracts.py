@@ -279,7 +279,7 @@ class ConsultaJurisprudenciaAgente(Contract):
     def remover_repeticoes_da_cadeia(
         cls, valor: list[ClasseProcessual] | None
     ) -> list[ClasseProcessual] | None:
-        return list(dict.fromkeys(valor)) if valor else valor
+        return list(dict.fromkeys(valor)) if valor else None
 
     tribunal: Tribunal | None = Field(
         default=None, description="Sigla canônica do tribunal explicitamente citado."
@@ -373,9 +373,7 @@ class ConsultaLegislacaoAgente(Contract):
     def normalizar_numero_diploma(cls, valor: object) -> str | None:
         return re.sub(r"\D", "", str(valor or "")) or None
 
-    ano_diploma: int | None = Field(
-        default=None, ge=1, le=9999, description="Ano do diploma com quatro dígitos."
-    )
+    # ano_diploma está temporariamente fora do contrato de citações.
 
 
 class ConsultaLegislacao(ConsultaLegislacaoAgente):

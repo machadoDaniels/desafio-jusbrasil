@@ -24,13 +24,10 @@
             "justMyCode": true
         },
         {
-            "name": "Python Debugger: Evaluate entities",
+            "name": "Python Debugger: Stage 3 - Entities",
             "type": "debugpy",
             "request": "launch",
-            "program": "${workspaceFolder}/scripts/evaluate_entities.py",
-            "args": [
-                "${workspaceFolder}/outputs/run-007-gemma-4-12b-it-qat-w4a16-ct/03-entities"
-            ],
+            "module": "desafio_jusbrasil.3_entities",
             "cwd": "${workspaceFolder}",
             "console": "integratedTerminal",
             "envFile": "${workspaceFolder}/.env",

@@ -18,6 +18,7 @@ from desafio_jusbrasil.contracts import (
     ConsultaJurisprudencia,
     ConsultaJurisprudenciaAgente,
     ConsultaLegislacao,
+    ConsultaLegislacaoAgente,
     DocumentoCompletude,
     DocumentoExtraido,
     DocumentoPredito,
@@ -31,8 +32,6 @@ from desafio_jusbrasil.orchestrator import Orquestrador
 from desafio_jusbrasil.utils import (
     escrever_manifesto_etapa,
     escrever_saida_documento,
-    extrair_identificadores_jurisprudencia,
-    normalizar_identificador,
     normalizar_numero_cnj,
 )
 
@@ -68,6 +67,7 @@ class ExtratorFake:
             CandidatoCitacao(
                 tipo=TipoCitacao.LEI,
                 trecho=trecho,
+                confianca_extracao=0.75,
                 inicio=inicio,
                 fim=inicio + len(trecho),
             )
@@ -367,6 +367,19 @@ class PipelineTest(unittest.TestCase):
         )
         mensagens = AgenteExtratorEntidades._mensagens(candidato)
         self.assertIn(candidato.trecho, mensagens[1]["content"])
+        self.assertIn(
+            "EDcl no AgInt no Agravo em Recurso Especial", mensagens[0]["content"]
+        )
+        self.assertIn(
+            '"classe_processual": "AREsp — Agravo em Recurso Especial"',
+            mensagens[0]["content"],
+        )
+        prompt_lei = AgenteExtratorEntidades._mensagens(
+            CandidatoCitacao(
+                trecho="art. 1.134 da Lei nº 13.105/2015", tipo=TipoCitacao.LEI
+            )
+        )[0]["content"]
+        self.assertIn("CPC — Código de Processo Civil", prompt_lei)
         schema_jurisprudencia = ConsultaJurisprudencia.model_json_schema()["properties"]
         self.assertEqual(
             schema_jurisprudencia["numero_classe_tribunal"]["examples"],
@@ -404,7 +417,6 @@ class PipelineTest(unittest.TestCase):
                 "numero_artigo",
                 "diploma",
                 "numero_diploma",
-                "ano_diploma",
             },
         )
         self.assertTrue(
@@ -420,39 +432,67 @@ class PipelineTest(unittest.TestCase):
             ).cadeia_recursal,
             ["REsp", "AgInt"],
         )
+        self.assertIsNone(ConsultaJurisprudencia(cadeia_recursal=[]).cadeia_recursal)
+        classe_agente = ConsultaJurisprudenciaAgente.model_json_schema()["properties"][
+            "classe_processual"
+        ]["anyOf"][0]["enum"]
+        self.assertIn("Rcl — Reclamação", classe_agente)
+        self.assertIsNone(
+            ConsultaJurisprudencia(
+                numero_processo_cnj="00003788220166050151", ano=2016
+            ).ano
+        )
+        self.assertEqual(
+            ConsultaJurisprudencia(
+                classe_processual="Rcl — Reclamação",
+                cadeia_recursal=[
+                    "AgInt — Agravo Interno",
+                    "Rcl — Reclamação",
+                ],
+            ).model_dump(include={"classe_processual", "cadeia_recursal"}),
+            {
+                "classe_processual": "Rcl",
+                "cadeia_recursal": ["AgInt", "Rcl"],
+            },
+        )
+        self.assertEqual(
+            ConsultaLegislacao(numero_artigo="Art. 1.105").numero_artigo,
+            "1105",
+        )
+        self.assertEqual(
+            ConsultaLegislacao(numero_diploma="Lei nº 13.105").numero_diploma,
+            "13105",
+        )
+        diplomas_agente = ConsultaLegislacaoAgente.model_json_schema()["properties"][
+            "diploma"
+        ]["anyOf"][0]["enum"]
+        self.assertIn("CLT — Consolidação das Leis do Trabalho", diplomas_agente)
+        self.assertEqual(
+            ConsultaLegislacao(
+                diploma="CLT — Consolidação das Leis do Trabalho"
+            ).diploma,
+            "Consolidação das Leis do Trabalho",
+        )
+        self.assertEqual(
+            ConsultaJurisprudencia(
+                numero_classe_tribunal="Rcl 68.244",
+                numero_registro_tribunal="2022/0187319-4",
+            ).model_dump(
+                include={"numero_classe_tribunal", "numero_registro_tribunal"}
+            ),
+            {
+                "numero_classe_tribunal": "68244",
+                "numero_registro_tribunal": "202201873194",
+            },
+        )
 
-    def test_identificadores_do_agente_aceitam_somente_digitos(self) -> None:
+    def test_identificadores_do_agente_sao_normalizados_no_contrato(self) -> None:
         consulta = ConsultaJurisprudenciaAgente(
-            numero_classe_tribunal="55626",
-            numero_registro_tribunal="202201873194",
+            numero_classe_tribunal="Rcl 55.626",
+            numero_registro_tribunal="2022/0187319-4",
         )
         self.assertEqual(consulta.numero_classe_tribunal, "55626")
-        with self.assertRaises(ValidationError):
-            ConsultaJurisprudenciaAgente(numero_classe_tribunal="Rcl 55.626")
-        with self.assertRaises(ValidationError):
-            ConsultaJurisprudenciaAgente(numero_registro_tribunal="2022/0187319-4")
-
-    def test_identificadores_extraidos_deterministicamente(self) -> None:
-        self.assertEqual(normalizar_identificador("Rcl 55.626"), "55626")
-        self.assertIsNone(normalizar_identificador("Rcl"))
-        self.assertEqual(
-            extrair_identificadores_jurisprudencia("Rcl nº 68.244/SP"),
-            (None, "68244", None),
-        )
-        self.assertEqual(
-            extrair_identificadores_jurisprudencia(
-                "QO na Cautelar 87 - DF (2022/0187319-4)"
-            ),
-            (None, "87", "202201873194"),
-        )
-        self.assertEqual(
-            extrair_identificadores_jurisprudencia(
-                "RSE nº 7000592-58.2025.7.00.0000/DF"
-            ),
-            ("70005925820257000000", None, None),
-        )
-        with self.assertRaises(ValidationError):
-            ConsultaJurisprudencia(numero_classe_tribunal="Rcl 55.626")
+        self.assertEqual(consulta.numero_registro_tribunal, "202201873194")
 
     def test_numero_cnj_recupera_zeros_do_trecho(self) -> None:
         self.assertEqual(
@@ -589,10 +629,9 @@ class PipelineTest(unittest.TestCase):
                     numero_artigo="373",
                     diploma="Código de Processo Civil",
                     numero_diploma="13.105",
-                    ano_diploma=2015,
                 )
             ),
-            ["Artigo 373", "13 105 2015"],
+            ["Artigo 373", "13 105"],
         )
         self.assertEqual(
             VerificadorVeracidade._normalizar_numero("AgInt no REsp 21737l8-SP"),
@@ -837,6 +876,45 @@ class PipelineTest(unittest.TestCase):
             self.assertTrue((saida / "a" / "resultado.json").exists())
             self.assertFalse((saida / "b" / "resultado.json").exists())
 
+    def test_entities_salva_citacao_antes_de_falha_posterior_no_documento(self) -> None:
+        with tempfile.TemporaryDirectory() as temporario:
+            raiz = Path(temporario)
+            entrada = raiz / "entrada"
+            saida = raiz / "saida"
+            entrada.mkdir()
+            candidatos = [
+                CandidatoAnalisado(
+                    candidato=CandidatoCitacao(
+                        trecho=texto,
+                        tipo=TipoCitacao.LEI,
+                        inicio=inicio,
+                        fim=inicio + len(texto),
+                    ),
+                    completude=ResultadoCompletude(completa=True),
+                )
+                for texto, inicio in (("art. 373 do CPC", 0), ("falha", 20))
+            ]
+            documento = DocumentoCompletude(
+                documento_id="doc", texto="", candidatos=candidatos
+            )
+            (entrada / "doc.json").write_text(
+                documento.model_dump_json(), encoding="utf-8"
+            )
+
+            with self.assertRaisesRegex(RuntimeError, "falha simulada"):
+                asyncio.run(
+                    executar_entities_async(
+                        entrada,
+                        saida,
+                        EntidadesAsyncComFalha(),
+                        max_concurrency=1,
+                    )
+                )
+
+            resultado = json.loads((saida / "doc" / "resultado.json").read_text())
+            self.assertEqual(len(resultado["candidatos"]), 1)
+            self.assertTrue((saida / "doc" / "0001.json").exists())
+
     def test_completude_entities_e_veracidade(self) -> None:
         with tempfile.TemporaryDirectory() as temporario:
             raiz = Path(temporario)
@@ -900,6 +978,7 @@ class PipelineTest(unittest.TestCase):
             )
             self.assertEqual(documento.citacoes[0].classificacao, Classificacao.REAL)
             self.assertEqual(documento.citacoes[0].resolucao.id_canonico, 28893055)
+            self.assertEqual(documento.citacoes[0].confianca, 0.75)
 
 
 if __name__ == "__main__":

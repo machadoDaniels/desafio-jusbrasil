@@ -124,6 +124,13 @@ uv run python -m desafio_jusbrasil.3_entities
 uv run python -m desafio_jusbrasil.4_veracity
 ```
 
+Todos os comandos aceitam um YAML alternativo, mantendo `pipeline.yaml` como padrão:
+
+```bash
+uv run desafio-jusbrasil --config pipeline-alternativo.yaml
+uv run python -m desafio_jusbrasil.3_entities --config pipeline-alternativo.yaml
+```
+
 Extração e completude respeitam `async_requests`. `3_entities` usa somente chamadas assíncronas; `4_veracity` é determinística e não chama modelo. A ordem dos documentos e candidatos é preservada na saída.
 
 ### Pré-processamento do banco canônico
@@ -132,6 +139,7 @@ Para gerar uma cópia enriquecida sem alterar o SQLite original:
 
 ```bash
 uv run python -m desafio_jusbrasil.database_preprocessing
+uv run python -m desafio_jusbrasil.database_preprocessing --config pipeline-alternativo.yaml
 ```
 
 Entrada, saída, diretório de auditoria, substituição do destino e parâmetros do agente ficam na seção `database_preprocessing` de `pipeline.yaml`. Origem e destino nunca podem ser o mesmo arquivo. O processo não modifica a tabela FTS existente.

@@ -3,6 +3,9 @@
 from __future__ import annotations
 
 import json
+import re
+import unicodedata
+from collections.abc import Mapping
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
@@ -10,6 +13,55 @@ from typing import Any
 from openai import omit
 
 from .contracts import Contract, StageConfig
+
+_PADRAO_CNJ = re.compile(
+    r"(?<!\d)(\d{1,7})\s*-\s*(\d{2})\s*\.\s*(\d{4})\s*\.\s*"
+    r"(\d)\s*\.\s*(\d{2})\s*\.\s*(\d{4})(?!\d)"
+)
+
+
+def normalizar_numero_cnj(valor: str | None, trecho: str = "") -> str | None:
+    """Normaliza CNJ e recupera zeros à esquerda do padrão publicado."""
+    digitos = re.sub(r"\D", "", valor or "")
+    candidatos = {
+        correspondencia.group(1).zfill(7) + "".join(correspondencia.groups()[1:])
+        for correspondencia in _PADRAO_CNJ.finditer(trecho)
+    }
+    compativeis = {
+        candidato
+        for candidato in candidatos
+        if not digitos or candidato.lstrip("0") == digitos.lstrip("0")
+    }
+    if len(compativeis) == 1:
+        digitos = compativeis.pop()
+    return digitos if len(digitos) == 20 else None
+
+
+def _chave_relator(valor: str) -> str:
+    sem_acentos = "".join(
+        caractere
+        for caractere in unicodedata.normalize("NFKD", valor.casefold())
+        if not unicodedata.combining(caractere)
+    )
+    return " ".join(re.sub(r"[^a-z0-9]+", " ", sem_acentos).split())
+
+
+def normalizar_relator(relator: str | None, relatores: Mapping[str, str]) -> str | None:
+    """Resolve uma variante de relator para um único nome canônico conhecido."""
+    if not relator:
+        return None
+    chave = _chave_relator(relator)
+    candidatos = {chave}
+    for prefixo in ("relator ", "relatora ", "ministro ", "ministra ", "min "):
+        if chave.startswith(prefixo):
+            candidatos.add(chave.removeprefix(prefixo))
+    correspondencias = {
+        canonico
+        for variante, canonico in relatores.items()
+        if _chave_relator(variante) in candidatos
+        or _chave_relator(canonico) in candidatos
+    }
+    return correspondencias.pop() if len(correspondencias) == 1 else None
 
 
 def ler_documento[Documento: Contract](
@@ -94,6 +146,32 @@ def complementar_auditoria(
         **detalhes,
         "input": auditoria["input"],
         "output": auditoria["output"],
+    }
+
+
+def criar_auditoria_erro(
+    requisicao: dict[str, Any],
+    response_format: type[Contract],
+    erro: Exception,
+    tentativa: int,
+    resposta: Any = None,
+) -> dict[str, Any]:
+    """Monta a auditoria de uma tentativa de modelo que terminou em erro."""
+    entrada = {nome: valor for nome, valor in requisicao.items() if valor is not omit}
+    entrada["response_format"] = response_format.model_json_schema()
+    saida = (
+        resposta.model_dump(
+            mode="json",
+            exclude={"choices": {"__all__": {"message": {"parsed"}}}},
+        )
+        if resposta is not None
+        else None
+    )
+    return {
+        "tentativa": tentativa,
+        "erro": {"tipo": type(erro).__name__, "mensagem": str(erro)},
+        "input": entrada,
+        "output": saida,
     }
 
 
