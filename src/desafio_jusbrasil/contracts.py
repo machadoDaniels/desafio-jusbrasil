@@ -28,6 +28,73 @@ class Classificacao(StrEnum):
 
 
 ReasoningEffort = Literal["none", "minimal", "low", "medium", "high", "xhigh", "max"]
+NaturezaJurisprudencia = Literal["acordao", "sumula"]
+FormatoNumero = Literal["cnj", "classico", "sem_numero"]
+Tribunal = Literal["STF", "STJ", "STM", "TSE", "TST"]
+UF = Literal[
+    "AC",
+    "AL",
+    "AP",
+    "AM",
+    "BA",
+    "CE",
+    "DF",
+    "ES",
+    "GO",
+    "MA",
+    "MT",
+    "MS",
+    "MG",
+    "PA",
+    "PB",
+    "PR",
+    "PE",
+    "PI",
+    "RJ",
+    "RN",
+    "RS",
+    "RO",
+    "RR",
+    "SC",
+    "SP",
+    "SE",
+    "TO",
+]
+ClasseProcessual = Literal[
+    "AI",
+    "APL",
+    "AR",
+    "AREsp",
+    "AREspe",
+    "ARR",
+    "AgInt",
+    "AgRg",
+    "E",
+    "EDcl",
+    "HC",
+    "RE",
+    "REsp",
+    "REspe",
+    "RHC",
+    "RMS",
+    "RR",
+    "RSE",
+    "Rcl",
+    "Rp",
+    "SLS",
+]
+Diploma = Literal[
+    "Constituição Federal",
+    "Código Civil",
+    "Código de Defesa do Consumidor",
+    "Código de Processo Civil",
+    "Código de Processo Penal",
+    "Código Penal Militar",
+    "Código Eleitoral",
+    "Consolidação das Leis do Trabalho",
+    "Lei Complementar",
+    "Lei",
+]
 
 
 class ModelConfig(Contract):
@@ -49,9 +116,10 @@ class PipelineConfig(Contract):
     input_dir: Path
     workdir: Path
     database: Path
+    database_preprocessing: dict[str, Any] | None = None
     extractor: StageConfig
     completeness: StageConfig
-    veracity: StageConfig
+    entities: StageConfig
 
     @classmethod
     def from_yaml(cls, caminho: Path) -> PipelineConfig:
@@ -118,16 +186,94 @@ class DocumentoCompletude(Contract):
     chamadas_modelo: list[dict[str, Any]] = Field(default_factory=list, exclude=True)
 
 
-class ConsultaJurisprudencia(Contract):
-    valores_fts: list[str] = Field(min_length=1)
-    natureza: Literal["acordao", "sumula"]
-    tribunal: str | None = None
-    ano: int | None = None
-    relator: str | None = None
+class ConsultaJurisprudenciaAgente(Contract):
+    """Entidades de jurisprudência solicitadas ao modelo."""
+
+    natureza: NaturezaJurisprudencia | None = Field(
+        default=None,
+        description="'sumula' para enunciado de súmula; 'acordao' para processo ou recurso.",
+    )
+    numero_processo: str | None = Field(
+        default=None,
+        description=(
+            "Número do processo somente com dígitos. Em CNJ, preserve os 20 dígitos, "
+            "inclusive zeros à esquerda."
+        ),
+    )
+    formato_numero: FormatoNumero | None = Field(
+        default=None,
+        description=(
+            "'cnj' para NNNNNNN-DD.AAAA.J.TR.OOOO, 'classico' para outros números, "
+            "ou 'sem_numero' quando ausente."
+        ),
+    )
+    classe_processual: ClasseProcessual | None = Field(
+        default=None,
+        description="Classe do processo ou recurso principal, independentemente da cadeia.",
+    )
+    cadeia_recursal: list[ClasseProcessual] | None = Field(
+        default=None,
+        description=(
+            "Todas as classes citadas; a ordem não tem significado, mas preserve repetições."
+        ),
+    )
+    tribunal: Tribunal | None = Field(
+        default=None, description="Sigla canônica do tribunal explicitamente citado."
+    )
+    uf: UF | None = Field(
+        default=None,
+        description="UF do processo; não confunda a classe RR com o estado de Roraima.",
+    )
+    ano: int | None = Field(
+        default=None,
+        ge=1,
+        le=9999,
+        description="Ano do julgamento, não o ano contido no número CNJ.",
+    )
+    relator: str | None = Field(
+        default=None, description="Nome do relator como aparece na citação."
+    )
+    numero_sumula: int | None = Field(
+        default=None, ge=1, description="Número inteiro da súmula, sem prefixo."
+    )
+    sumula_vinculante: bool | None = Field(
+        default=None,
+        description=(
+            "true apenas para Súmula Vinculante do STF; false para súmula comum."
+        ),
+    )
+
+
+class ConsultaJurisprudencia(ConsultaJurisprudenciaAgente):
+    """Consulta de jurisprudência normalizada para busca na base canônica."""
+
+    relator_norm: str | None = None
 
 
 class ConsultaLegislacao(Contract):
-    valores_fts: list[str] = Field(min_length=1)
+    numero_artigo: str | None = Field(
+        default=None, description="Número do artigo sem o prefixo 'Art.'."
+    )
+    diploma: Diploma | None = Field(
+        default=None, description="Nome canônico do diploma entre as opções permitidas."
+    )
+    numero_diploma: str | None = Field(
+        default=None, description="Número do diploma somente com dígitos."
+    )
+    ano_diploma: int | None = Field(
+        default=None, ge=1, le=9999, description="Ano do diploma com quatro dígitos."
+    )
+
+
+class CandidatoEntidades(Contract):
+    candidato: CandidatoCitacao
+    completude: ResultadoCompletude
+    campos_extraidos: ConsultaJurisprudencia | ConsultaLegislacao | None = None
+
+
+class DocumentoEntidades(Contract):
+    documento_id: str = Field(min_length=1)
+    candidatos: list[CandidatoEntidades]
 
 
 class ResultadoVeracidade(Contract):
@@ -217,15 +363,15 @@ class ClassificadorCompletudeAsync(Protocol):
     ) -> tuple[ResultadoCompletude, list[dict[str, Any]]]: ...
 
 
-class ClassificadorVeracidade(Protocol):
-    def classificar_auditada(
+class ExtratorEntidadesAsync(Protocol):
+    async def extrair_auditada_async(
         self,
         candidato: CandidatoCitacao,
-    ) -> tuple[ResultadoVeracidade, dict[str, Any]]: ...
+    ) -> tuple[ConsultaJurisprudencia | ConsultaLegislacao, dict[str, Any]]: ...
 
 
-class ClassificadorVeracidadeAsync(Protocol):
-    async def classificar_auditada_async(
+class VerificadorConsulta(Protocol):
+    def verificar(
         self,
-        candidato: CandidatoCitacao,
+        consulta: ConsultaJurisprudencia | ConsultaLegislacao,
     ) -> tuple[ResultadoVeracidade, dict[str, Any]]: ...
