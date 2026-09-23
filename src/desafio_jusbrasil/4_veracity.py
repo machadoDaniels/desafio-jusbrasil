@@ -28,6 +28,7 @@ from .utils import (
     escrever_saida_documento,
     ler_documento,
     listar_resultados,
+    materializar,
 )
 
 
@@ -429,8 +430,6 @@ def executar_veracidade(
 
 
 def main() -> None:
-    from .orchestrator import materializar
-
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--config", type=Path, default=Path("pipeline.yaml"))
     args = parser.parse_args()

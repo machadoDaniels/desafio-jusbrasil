@@ -192,3 +192,41 @@ def criar_auditoria(
             exclude={"choices": {"__all__": {"message": {"parsed"}}}},
         ),
     }
+
+
+def materializar(entrada: Path, pasta_saida: Path) -> None:
+    arquivos = listar_resultados(entrada)
+    pasta_saida.mkdir(parents=True, exist_ok=True)
+    for arquivo in tqdm(arquivos, desc="Materializando predições"):
+        documento = DocumentoClassificado.model_validate_json(
+            arquivo.read_text(encoding="utf-8")
+        )
+        citacoes = []
+        for item in documento.candidatos:
+            candidato = item.candidato
+            if candidato.inicio is None or candidato.fim is None:
+                continue
+            resultado = item.veracidade
+            resolucao = None
+            if resultado.classificacao == Classificacao.REAL:
+                assert resultado.id_canonico is not None
+                resolucao = Resolucao(id_canonico=resultado.id_canonico)
+            citacoes.append(
+                Predicao(
+                    inicio=candidato.inicio,
+                    fim=candidato.fim,
+                    trecho=candidato.trecho,
+                    tipo=candidato.tipo,
+                    classificacao=resultado.classificacao,
+                    resolucao=resolucao,
+                    confianca=candidato.confianca_extracao,
+                )
+            )
+        predicao = DocumentoPredito(
+            documento_id=documento.documento_id,
+            citacoes=citacoes,
+        )
+        (pasta_saida / f"{documento.documento_id}.json").write_text(
+            predicao.model_dump_json(indent=2, exclude_none=True) + "\n",
+            encoding="utf-8",
+        )
