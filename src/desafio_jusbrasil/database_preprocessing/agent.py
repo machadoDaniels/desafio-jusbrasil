@@ -6,22 +6,22 @@ import asyncio
 import json
 import logging
 import re
-import time
 from collections.abc import Mapping
 from typing import Any
 
 from openai import AsyncOpenAI, OpenAIError, omit
 from pydantic import ValidationError
 
-from ..utils import normalizar_numero_processo, normalizar_relator
+from ..utils import normalizar_numero_processo
 from .contracts import (
     Contract,
     DocumentoEnriquecido,
     DocumentoFonte,
     MetadadosAcordao,
+    MetadadosDispositivo,
     MetadadosDocumento,
     MetadadosSumula,
-    contrato_para_natureza,
+    _MetadadosAcordaoAgente,
 )
 
 _LOG = logging.getLogger(__name__)
@@ -30,7 +30,7 @@ _PROMPTS = {
     "acordao": """Extraia somente metadados jurídicos explicitamente sustentados pelo documento.
 Não use conhecimento externo e não invente valores. Retorne número do processo somente com
 algarismos; classifique-o como cnj, classico ou sem_numero. Extraia a classe principal, todas as
-classes da cadeia recursal e a UF. A ordem da cadeia recursal não tem significado. Campos ausentes
+classes da cadeia recursal e a UF. A cadeia não tem ordem nem repetições. Campos ausentes
 devem ser nulos.""",
     "sumula": """Extraia somente os metadados explicitamente sustentados pela súmula. Não use
 conhecimento externo e não invente valores. Informe o número da súmula e se ela é vinculante;
@@ -42,16 +42,10 @@ alfanuméricos do artigo. Campos ausentes devem ser nulos.""",
 }
 
 
-def _entrada_agente(
-    documento: DocumentoFonte, header_char_limit: int
-) -> dict[str, Any]:
-    entrada = {
-        "documento_id": documento.documento_id,
-        "id": documento.id,
-        "tribunal": documento.tribunal,
-    }
+def _entrada_agente(documento: DocumentoFonte) -> dict[str, Any]:
+    entrada = {"tribunal": documento.tribunal}
     if documento.natureza == "acordao":
-        entrada.update(ano=documento.ano, texto=documento.texto[:header_char_limit])
+        entrada.update(ano=documento.ano, texto=documento.texto)
     else:
         entrada["texto"] = documento.texto
     return entrada
@@ -78,7 +72,7 @@ def _requisicao(
             {
                 "role": "user",
                 "content": json.dumps(
-                    _entrada_agente(documento, config["header_char_limit"]),
+                    _entrada_agente(documento),
                     ensure_ascii=False,
                 ),
             },
@@ -92,27 +86,9 @@ def _requisicao(
     }
 
 
-class LimitadorTaxa:
-    """Serializa o início das requisições para respeitar o intervalo configurado."""
-
-    def __init__(self, intervalo: float) -> None:
-        self._intervalo = intervalo
-        self._proxima = 0.0
-        self._lock = asyncio.Lock()
-
-    async def aguardar(self) -> None:
-        async with self._lock:
-            agora = time.monotonic()
-            espera = max(0.0, self._proxima - agora)
-            if espera:
-                await asyncio.sleep(espera)
-            self._proxima = time.monotonic() + self._intervalo
-
-
 def normalizar_campos(
     documento: DocumentoFonte,
     campos: MetadadosDocumento,
-    relatores: Mapping[str, str],
 ) -> MetadadosDocumento:
     """Aplica as mesmas regras determinísticas a respostas novas e checkpoints."""
     if documento.natureza == "acordao":
@@ -121,10 +97,7 @@ def normalizar_campos(
             campos.numero_processo, documento.texto
         )
         dados.update(numero_processo=numero, formato_numero=formato)
-        return MetadadosAcordao(
-            **dados,
-            relator_norm=normalizar_relator(documento.relator, relatores),
-        )
+        return MetadadosAcordao(**dados)
     if documento.natureza == "sumula":
         dados = campos.model_dump()
         dados["sumula_vinculante"] = bool(
@@ -152,17 +125,18 @@ async def enriquecer_documento(
     cliente: AsyncOpenAI,
     config: Mapping[str, Any],
     semaforo: asyncio.Semaphore,
-    limitador: LimitadorTaxa,
-    relatores: Mapping[str, str],
 ) -> tuple[DocumentoEnriquecido, dict[str, Any]]:
     """Extrai, normaliza e audita os metadados de um documento."""
-    contrato = contrato_para_natureza(documento.natureza)
+    contrato = {
+        "acordao": _MetadadosAcordaoAgente,
+        "sumula": MetadadosSumula,
+        "dispositivo": MetadadosDispositivo,
+    }[documento.natureza]
     requisicao = _requisicao(documento, contrato, config)
     ultimo_erro: Exception | None = None
 
     for tentativa in range(1, config["max_retries"] + 1):
         try:
-            await limitador.aguardar()
             async with semaforo:
                 resposta = await cliente.chat.completions.parse(**requisicao)
             campos = resposta.choices[0].message.parsed
@@ -172,7 +146,7 @@ async def enriquecer_documento(
                 documento_id=documento.documento_id,
                 id=documento.id,
                 natureza=documento.natureza,
-                campos=normalizar_campos(documento, campos, relatores),
+                campos=normalizar_campos(documento, campos),
             )
             usage = getattr(resposta, "usage", None)
             return resultado, {
@@ -188,7 +162,6 @@ async def enriquecer_documento(
                         "max_concurrency",
                         "max_retries",
                         "retry_delay_seconds",
-                        "header_char_limit",
                     }
                     and valor is not None
                 },

@@ -122,11 +122,19 @@ class _MetadadosAcordaoAgente(Contract):
     cadeia_recursal: list[ClasseProcessual] | None = Field(
         default=None,
         description=(
-            "Multiconjunto de todas as classes processuais explicitamente presentes na "
-            "cadeia recursal. A ordem dos itens não tem significado, mas repetições devem "
-            "ser preservadas. Deve incluir classe_processual quando ela não for null."
+            "Todas as classes processuais explicitamente presentes na cadeia recursal, "
+            "sem ordem nem repetições. Deve incluir classe_processual quando ela não for "
+            "null."
         ),
     )
+
+    @field_validator("cadeia_recursal")
+    @classmethod
+    def remover_repeticoes_da_cadeia(
+        cls, valor: list[ClasseProcessual] | None
+    ) -> list[ClasseProcessual] | None:
+        return list(dict.fromkeys(valor)) if valor else valor
+
     uf: UF | None = Field(
         default=None,
         description=(
@@ -269,15 +277,3 @@ class DocumentoEnriquecido(Contract):
                 f"natureza {self.natureza} exige {contrato.__name__}"
             )
         return self
-
-
-def contrato_para_natureza(
-    natureza: NaturezaDocumento,
-) -> type[Contract]:
-    """Retorna o schema Pydantic usado como ``response_format`` do modelo."""
-    contratos = {
-        "acordao": _MetadadosAcordaoAgente,
-        "sumula": MetadadosSumula,
-        "dispositivo": MetadadosDispositivo,
-    }
-    return contratos[natureza]

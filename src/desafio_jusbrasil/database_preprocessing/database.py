@@ -139,19 +139,6 @@ def listar_documentos(origem: Path) -> list[DocumentoFonte]:
     return [DocumentoFonte.model_validate(dict(linha)) for linha in linhas]
 
 
-def _validar_origem_destino(
-    origem: Path, destino: Path, force: bool
-) -> tuple[Path, Path]:
-    origem = origem.resolve(strict=True)
-    destino = destino.resolve()
-    if origem == destino or (destino.exists() and os.path.samefile(origem, destino)):
-        raise ValueError("origem e destino não podem apontar para o mesmo banco")
-    if destino.exists() and not force:
-        raise FileExistsError("banco de saída já existe; use force para substituí-lo")
-    destino.parent.mkdir(parents=True, exist_ok=True)
-    return origem, destino
-
-
 def _validar_resultados(
     origem: Path, resultados: Iterable[DocumentoEnriquecido]
 ) -> list[DocumentoEnriquecido]:
@@ -284,11 +271,9 @@ def materializar_banco(
     origem: Path,
     destino: Path,
     resultados: Iterable[DocumentoEnriquecido],
-    *,
-    force: bool = False,
 ) -> dict[str, Any]:
     """Copia, enriquece, valida e publica o SQLite por ``rename`` atômico."""
-    origem, destino = _validar_origem_destino(origem, destino, force)
+    destino.parent.mkdir(parents=True, exist_ok=True)
     resultados_validados = _validar_resultados(origem, resultados)
 
     with _conectar_somente_leitura(origem) as conexao_origem:

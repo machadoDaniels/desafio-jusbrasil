@@ -6,7 +6,6 @@ from .contracts import (
     MetadadosAcordao,
     MetadadosDispositivo,
     MetadadosSumula,
-    contrato_para_natureza,
 )
 
 __all__ = [
@@ -15,5 +14,4 @@ __all__ = [
     "MetadadosAcordao",
     "MetadadosDispositivo",
     "MetadadosSumula",
-    "contrato_para_natureza",
 ]
