@@ -78,8 +78,26 @@ class VerificadorVeracidade:
             if consulta_estruturada is not None:
                 sql, parametros = consulta_estruturada
                 linhas = conexao.execute(sql, parametros).fetchall()
-                if linhas:
-                    return [dict(linha) for linha in linhas], sql, parametros
+                if (
+                    len(linhas) > 1
+                    and isinstance(consulta, ConsultaJurisprudencia)
+                    and consulta.numero_processo
+                ):
+                    desambiguada = self._consulta_processo_desambiguada(
+                        consulta, colunas
+                    )
+                    if desambiguada is not None:
+                        sql_desambiguada, parametros_desambiguados = desambiguada
+                        linhas_desambiguadas = conexao.execute(
+                            sql_desambiguada, parametros_desambiguados
+                        ).fetchall()
+                        if linhas_desambiguadas:
+                            return (
+                                [dict(linha) for linha in linhas_desambiguadas],
+                                sql_desambiguada,
+                                parametros_desambiguados,
+                            )
+                return [dict(linha) for linha in linhas], sql, parametros
 
             expressao_fts = self._expressao_fts(consulta)
             filtros = ["documentos_fts MATCH ?", "d.tipo = ?", "d.natureza = ?"]
@@ -124,9 +142,6 @@ class VerificadorVeracidade:
                 if consulta.tribunal:
                     filtros.append("tribunal = ? COLLATE NOCASE")
                     parametros.append(consulta.tribunal)
-                if consulta.sumula_vinculante is not None:
-                    filtros.append("sumula_vinculante = ?")
-                    parametros.append(int(consulta.sumula_vinculante))
             else:
                 return None
         elif consulta.numero_artigo and "numero_artigo" in colunas:
@@ -159,6 +174,32 @@ class VerificadorVeracidade:
             + " LIMIT 10"
         )
         return sql, parametros
+
+    @staticmethod
+    def _consulta_processo_desambiguada(
+        consulta: ConsultaJurisprudencia,
+        colunas: set[str],
+    ) -> tuple[str, list[Any]] | None:
+        filtros = ["natureza = 'acordao'", "numero_processo = ?"]
+        parametros: list[Any] = [re.sub(r"\D", "", consulta.numero_processo or "")]
+        opcionais = (
+            ("tribunal", consulta.tribunal),
+            ("uf", consulta.uf),
+            ("ano", consulta.ano),
+            ("relator_norm", consulta.relator_norm),
+        )
+        for coluna, valor in opcionais:
+            if valor is not None and coluna in colunas:
+                filtros.append(f"{coluna} = ? COLLATE NOCASE")
+                parametros.append(valor)
+        if len(filtros) == 2:
+            return None
+        return (
+            "SELECT id, documento_id FROM documentos WHERE "
+            + " AND ".join(filtros)
+            + " LIMIT 10",
+            parametros,
+        )
 
     @classmethod
     def _expressao_fts(
