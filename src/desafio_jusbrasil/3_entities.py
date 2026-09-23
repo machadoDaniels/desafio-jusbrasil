@@ -24,6 +24,7 @@ from .contracts import (
     ConsultaJurisprudencia,
     ConsultaJurisprudenciaAgente,
     ConsultaLegislacao,
+    ConsultaLegislacaoAgente,
     Contract,
     DocumentoCompletude,
     DocumentoEntidades,
@@ -34,6 +35,7 @@ from .contracts import (
 )
 from .utils import (
     criar_auditoria,
+    criar_auditoria_erro,
     escrever_manifesto_etapa,
     escrever_saida_documento,
     ler_documento,
@@ -45,10 +47,42 @@ from .utils import (
 _PROMPT_JURISPRUDENCIA = """Extraia os campos de identificação desta citação de
 jurisprudência brasileira.
 
-Preencha somente dados explícitos ou decorrentes de abreviações
-jurídicas inequívocas."""
+Preencha somente dados explícitos ou decorrentes de abreviações jurídicas inequívocas.
+
+Exemplo completo — a classe principal é o recurso-base, não o recurso incidental mais externo:
+
+Trecho: EDcl no AgInt no Agravo em Recurso Especial nº 1904603/TO
+
+Resposta:
+{
+  "natureza": "acordao",
+  "numero_processo_cnj": null,
+  "numero_classe_tribunal": "1904603",
+  "numero_registro_tribunal": null,
+  "classe_processual": "AREsp — Agravo em Recurso Especial",
+  "cadeia_recursal": [
+    "EDcl — Embargos de Declaração",
+    "AgInt — Agravo Interno",
+    "AREsp — Agravo em Recurso Especial"
+  ],
+  "tribunal": null,
+  "uf": "TO",
+  "ano": null,
+  "relator": null,
+  "numero_sumula": null,
+  "sumula_vinculante": null
+}"""
 
 _LOG = logging.getLogger(__name__)
+
+
+class ErroExtracaoEntidades(RuntimeError):
+    """Falha final de uma citação com as tentativas auditadas."""
+
+    def __init__(self, mensagem: str, auditorias: list[dict[str, Any]]) -> None:
+        super().__init__(mensagem)
+        self.auditorias = auditorias
+
 
 _PROMPT_LEI = """Extraia os campos de identificação desta citação de legislação
 brasileira.
@@ -65,7 +99,7 @@ def _contrato_consulta(tipo: TipoCitacao) -> type[Contract]:
     return (
         ConsultaJurisprudenciaAgente
         if tipo == TipoCitacao.JURISPRUDENCIA
-        else ConsultaLegislacao
+        else ConsultaLegislacaoAgente
     )
 
 
@@ -85,16 +119,21 @@ class AgenteExtratorEntidades:
     async def extrair_auditada_async(
         self,
         candidato: CandidatoCitacao,
-    ) -> tuple[ConsultaJurisprudencia | ConsultaLegislacao, dict[str, Any]]:
+    ) -> tuple[ConsultaJurisprudencia | ConsultaLegislacao, list[dict[str, Any]]]:
         if not isinstance(self._cliente, AsyncOpenAI):
             raise TypeError("extrair_auditada_async() exige cliente assíncrono")
         requisicao = self._requisicao(candidato)
+        auditorias: list[dict[str, Any]] = []
         ultimo_erro: Exception | None = None
         for tentativa in range(1, self._config.max_retries + 1):
+            resposta = None
             try:
                 async with asyncio.timeout(self._config.request_timeout_seconds):
                     resposta = await self._cliente.chat.completions.parse(**requisicao)
-                return self._finalizar(requisicao, resposta, candidato, tentativa)
+                consulta, auditoria = self._finalizar(
+                    requisicao, resposta, candidato, tentativa
+                )
+                return consulta, [*auditorias, auditoria]
             except (
                 TimeoutError,
                 OpenAIError,
@@ -104,6 +143,15 @@ class AgenteExtratorEntidades:
                 AttributeError,
             ) as erro:
                 ultimo_erro = erro
+                auditorias.append(
+                    criar_auditoria_erro(
+                        requisicao,
+                        _contrato_consulta(candidato.tipo),
+                        erro,
+                        tentativa,
+                        resposta,
+                    )
+                )
                 _LOG.warning(
                     "entidades: tentativa %d/%d falhou para %r: %s",
                     tentativa,
@@ -113,8 +161,9 @@ class AgenteExtratorEntidades:
                 )
                 if tentativa < self._config.max_retries:
                     await asyncio.sleep(tentativa)
-        raise RuntimeError(
-            f"retries esgotados para {candidato.trecho[:80]!r}: {ultimo_erro}"
+        raise ErroExtracaoEntidades(
+            f"retries esgotados para {candidato.trecho[:80]!r}: {ultimo_erro}",
+            auditorias,
         ) from ultimo_erro
 
     @staticmethod
@@ -177,7 +226,7 @@ class AgenteExtratorEntidades:
             )
             consulta = ConsultaJurisprudencia.model_validate(dados)
         else:
-            consulta = ConsultaLegislacao.model_validate(consulta)
+            consulta = ConsultaLegislacao.model_validate(consulta.model_dump())
         auditoria = criar_auditoria(
             requisicao,
             resposta,
@@ -188,6 +237,65 @@ class AgenteExtratorEntidades:
         return consulta, auditoria
 
 
+async def _extrair_entidade(
+    analisado: CandidatoAnalisado,
+    extrator: ExtratorEntidadesAsync,
+    semaforo: asyncio.Semaphore,
+) -> tuple[CandidatoEntidades, list[dict[str, Any]]]:
+    async with semaforo:
+        campos, chamadas = await extrator.extrair_auditada_async(analisado.candidato)
+    return CandidatoEntidades(
+        candidato=analisado.candidato,
+        completude=analisado.completude,
+        campos_extraidos=campos,
+    ), chamadas
+
+
+async def _processar_documento_entities(
+    arquivo: Path,
+    output_file: Path,
+    extrator: ExtratorEntidadesAsync,
+    semaforo: asyncio.Semaphore,
+    progresso: Any,
+) -> None:
+    documento = ler_documento(arquivo, DocumentoCompletude)
+    candidatos: list[CandidatoEntidades] = []
+    chamadas: list[dict[str, Any]] = []
+    if not documento.candidatos:
+        escrever_saida_documento(
+            output_file,
+            DocumentoEntidades(documento_id=documento.documento_id, candidatos=[]),
+            [],
+        )
+    for analisado in documento.candidatos:
+        try:
+            candidato, chamadas_citacao = await _extrair_entidade(
+                analisado, extrator, semaforo
+            )
+        except ErroExtracaoEntidades as erro:
+            chamadas.extend(erro.auditorias)
+            escrever_saida_documento(
+                output_file,
+                DocumentoEntidades(
+                    documento_id=documento.documento_id,
+                    candidatos=candidatos,
+                ),
+                chamadas,
+            )
+            raise
+        candidatos.append(candidato)
+        chamadas.extend(chamadas_citacao)
+        escrever_saida_documento(
+            output_file,
+            DocumentoEntidades(
+                documento_id=documento.documento_id,
+                candidatos=candidatos,
+            ),
+            chamadas,
+        )
+        progresso.update()
+
+
 async def executar_entities_async(
     input_file: Path,
     output_file: Path,
@@ -195,40 +303,25 @@ async def executar_entities_async(
     max_concurrency: int,
 ) -> None:
     arquivos = listar_resultados(input_file)
+    total_citacoes = sum(
+        len(ler_documento(arquivo, DocumentoCompletude).candidatos)
+        for arquivo in arquivos
+    )
     semaforo = asyncio.Semaphore(max_concurrency)
-    progresso = tqdm(total=len(arquivos), desc="Extraindo entidades", unit="documento")
-
-    async def processar(arquivo: Path) -> None:
-        documento = ler_documento(arquivo, DocumentoCompletude)
-
-        async def extrair(
-            analisado: CandidatoAnalisado,
-        ) -> tuple[CandidatoEntidades, dict[str, Any]]:
-            async with semaforo:
-                campos, chamada = await extrator.extrair_auditada_async(
-                    analisado.candidato
-                )
-            return CandidatoEntidades(
-                candidato=analisado.candidato,
-                completude=analisado.completude,
-                campos_extraidos=campos,
-            ), chamada
-
-        resultados = await asyncio.gather(
-            *(extrair(analisado) for analisado in documento.candidatos)
-        )
-        escrever_saida_documento(
-            output_file,
-            DocumentoEntidades(
-                documento_id=documento.documento_id,
-                candidatos=[item[0] for item in resultados],
-            ),
-            [item[1] for item in resultados],
-        )
-        progresso.update()
-
+    progresso = tqdm(
+        total=total_citacoes,
+        desc="Extraindo entidades",
+        unit="citação",
+    )
     try:
-        await asyncio.gather(*(processar(arquivo) for arquivo in arquivos))
+        await asyncio.gather(
+            *(
+                _processar_documento_entities(
+                    arquivo, output_file, extrator, semaforo, progresso
+                )
+                for arquivo in arquivos
+            )
+        )
     finally:
         progresso.close()
 
