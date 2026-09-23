@@ -20,7 +20,6 @@ from .contracts import (
     DocumentoEntidades,
     PipelineConfig,
     ResultadoVeracidade,
-    TipoCitacao,
     VerificadorConsulta,
 )
 from .utils import (
@@ -30,6 +29,8 @@ from .utils import (
     listar_resultados,
     materializar,
 )
+
+type ConsultaSql = tuple[str, list[Any]]
 
 
 class VerificadorVeracidade:
@@ -71,6 +72,7 @@ class VerificadorVeracidade:
         self,
         consulta: ConsultaJurisprudencia | ConsultaLegislacao,
     ) -> tuple[list[dict[str, Any]], str, list[Any]]:
+        # 1. Validação mínima antes de abrir a base.
         if isinstance(consulta, ConsultaJurisprudencia):
             if (
                 not self._numero_jurisprudencia(consulta)
@@ -87,6 +89,8 @@ class VerificadorVeracidade:
             colunas = {
                 linha[1] for linha in conexao.execute("PRAGMA table_info(documentos)")
             }
+
+            # 2. Busca estruturada: identificadores, súmula ou dispositivo legal.
             consulta_estruturada = self._consulta_estruturada(consulta, colunas)
             if consulta_estruturada is not None:
                 sql, parametros = consulta_estruturada
@@ -112,36 +116,16 @@ class VerificadorVeracidade:
                             )
                 return [dict(linha) for linha in linhas], sql, parametros
 
-            expressao_fts = self._expressao_fts(consulta)
-            filtros = ["documentos_fts MATCH ?", "d.tipo = ?", "d.natureza = ?"]
-            if isinstance(consulta, ConsultaJurisprudencia):
-                natureza = consulta.natureza or (
-                    "sumula" if consulta.numero_sumula else "acordao"
-                )
-                parametros = [
-                    expressao_fts,
-                    TipoCitacao.JURISPRUDENCIA.value,
-                    natureza,
-                ]
-                if consulta.numero_sumula and consulta.tribunal:
-                    filtros.append("d.tribunal = ? COLLATE NOCASE")
-                    parametros.append(consulta.tribunal)
-            else:
-                parametros = [expressao_fts, TipoCitacao.LEI.value, "dispositivo"]
-            sql = (
-                "SELECT d.id, d.documento_id FROM documentos_fts "
-                "JOIN documentos AS d ON d.rowid = documentos_fts.rowid WHERE "
-                + " AND ".join(filtros)
-                + " LIMIT 10"
-            )
-            linhas = conexao.execute(sql, parametros).fetchall()
-        return [dict(linha) for linha in linhas], sql, parametros
+            raise ValueError("nenhuma consulta estruturada disponível")
+
+    # Busca estruturada -----------------------------------------------------
 
     @staticmethod
     def _filtro_identificadores(
         consulta: ConsultaJurisprudencia,
         colunas: set[str],
     ) -> tuple[str, list[Any], bool] | None:
+        # Prioridade 1: CNJ é um identificador exclusivo.
         if consulta.numero_processo_cnj and "numero_processo_cnj" in colunas:
             return (
                 "numero_processo_cnj = ?",
@@ -149,6 +133,7 @@ class VerificadorVeracidade:
                 True,
             )
 
+        # Prioridade 2: número de classe e de registro são consultados cruzadamente.
         valores = list(
             dict.fromkeys(
                 re.sub(r"\D", "", valor)
@@ -182,52 +167,82 @@ class VerificadorVeracidade:
         cls,
         consulta: ConsultaJurisprudencia | ConsultaLegislacao,
         colunas: set[str],
-    ) -> tuple[str, list[Any]] | None:
-        filtros: list[str]
-        parametros: list[Any]
+    ) -> ConsultaSql | None:
+        """Escolhe a primeira rota estruturada disponível para a consulta."""
         if isinstance(consulta, ConsultaJurisprudencia):
-            identificador = cls._filtro_identificadores(consulta, colunas)
-            if identificador is not None:
-                filtro, parametros, eh_cnj = identificador
-                filtros = ["natureza = 'acordao'", filtro]
-                if not eh_cnj and consulta.tribunal:
-                    filtros.append("tribunal = ? COLLATE NOCASE")
-                    parametros.append(consulta.tribunal)
-            elif consulta.numero_sumula is not None and "numero_sumula" in colunas:
-                filtros = ["natureza = 'sumula'", "numero_sumula = ?"]
-                parametros = [consulta.numero_sumula]
-                if consulta.tribunal:
-                    filtros.append("tribunal = ? COLLATE NOCASE")
-                    parametros.append(consulta.tribunal)
-            else:
-                return None
-        elif consulta.numero_artigo and "numero_artigo" in colunas:
-            artigo = re.sub(
-                r"^art(?:igo)?\.?\s*", "", consulta.numero_artigo, flags=re.IGNORECASE
+            return cls._consulta_jurisprudencia_estruturada(consulta, colunas)
+        return cls._consulta_legislacao_estruturada(consulta, colunas)
+
+    @classmethod
+    def _consulta_jurisprudencia_estruturada(
+        cls, consulta: ConsultaJurisprudencia, colunas: set[str]
+    ) -> ConsultaSql | None:
+        # 1. CNJ: chave exclusiva, sem filtro adicional.
+        if consulta.numero_processo_cnj and "numero_processo_cnj" in colunas:
+            return cls._montar_consulta_documentos(
+                ["natureza = 'acordao'", "numero_processo_cnj = ?"],
+                [re.sub(r"\D", "", consulta.numero_processo_cnj)],
             )
-            artigo_sem_ordinal = artigo.rstrip("º°")
-            variantes = list(
-                dict.fromkeys([artigo, artigo_sem_ordinal, artigo_sem_ordinal + "º"])
-            )
-            filtros = [
-                "natureza = 'dispositivo'",
-                f"numero_artigo IN ({', '.join('?' for _ in variantes)})",
-            ]
-            parametros = variantes
-            if consulta.numero_diploma:
-                filtros.append("numero_diploma = ?")
-                parametros.append(re.sub(r"\D", "", consulta.numero_diploma))
-            elif consulta.diploma:
-                filtros.append("diploma = ?")
-                parametros.append(consulta.diploma)
-        else:
+
+        # 2. Número de classe ou de registro: busca cruzada nas duas colunas.
+        identificador = cls._filtro_identificadores(consulta, colunas)
+        if identificador is not None:
+            filtro, parametros, _ = identificador
+            filtros = ["natureza = 'acordao'", filtro]
+            if consulta.tribunal:
+                filtros.append("tribunal = ? COLLATE NOCASE")
+                parametros.append(consulta.tribunal)
+            return cls._montar_consulta_documentos(filtros, parametros)
+
+        # 3. Súmula: número e tribunal, quando disponível.
+        if consulta.numero_sumula is not None and "numero_sumula" in colunas:
+            filtros = ["natureza = 'sumula'", "numero_sumula = ?"]
+            parametros = [consulta.numero_sumula]
+            if consulta.tribunal:
+                filtros.append("tribunal = ? COLLATE NOCASE")
+                parametros.append(consulta.tribunal)
+            return cls._montar_consulta_documentos(filtros, parametros)
+        return None
+
+    @classmethod
+    def _consulta_legislacao_estruturada(
+        cls, consulta: ConsultaLegislacao, colunas: set[str]
+    ) -> ConsultaSql | None:
+        # Artigo: aceita as três grafias armazenáveis do ordinal.
+        if not consulta.numero_artigo or "numero_artigo" not in colunas:
             return None
+        artigo = re.sub(
+            r"^art(?:igo)?\.?\s*", "", consulta.numero_artigo, flags=re.IGNORECASE
+        )
+        artigo_sem_ordinal = artigo.rstrip("º°")
+        variantes = list(
+            dict.fromkeys([artigo, artigo_sem_ordinal, artigo_sem_ordinal + "º"])
+        )
+        filtros = [
+            "natureza = 'dispositivo'",
+            f"numero_artigo IN ({', '.join('?' for _ in variantes)})",
+        ]
+        parametros = variantes
+        if consulta.numero_diploma:
+            filtros.append("numero_diploma = ?")
+            parametros.append(re.sub(r"\D", "", consulta.numero_diploma))
+        elif consulta.diploma:
+            filtros.append("diploma = ?")
+            parametros.append(consulta.diploma)
+        return cls._montar_consulta_documentos(filtros, parametros)
+
+    @staticmethod
+    def _montar_consulta_documentos(
+        filtros: list[str], parametros: list[Any]
+    ) -> ConsultaSql:
         sql = (
             "SELECT id, documento_id FROM documentos WHERE "
             + " AND ".join(filtros)
             + " LIMIT 10"
         )
         return sql, parametros
+
+    # Desambiguação estruturada ---------------------------------------------
 
     @classmethod
     def _consulta_processo_desambiguada(
@@ -258,117 +273,6 @@ class VerificadorVeracidade:
             + " LIMIT 10",
             parametros,
         )
-
-    @classmethod
-    def _expressao_fts(
-        cls,
-        consulta: ConsultaJurisprudencia | ConsultaLegislacao,
-    ) -> str:
-        valores = cls._valores_fts(consulta)
-        if (
-            isinstance(consulta, ConsultaJurisprudencia)
-            and cls._numero_jurisprudencia(consulta)
-            and consulta.cadeia_recursal
-            and len(consulta.cadeia_recursal) > 1
-        ):
-            classes = [
-                cls._normalizar_classe(item) for item in consulta.cadeia_recursal
-            ]
-            termos = " ".join(f'"{valor}"' for valor in [*classes, valores[0]])
-            return f"NEAR({termos}, 20)"
-        return " AND ".join(f'"{valor}"' for valor in valores)
-
-    @classmethod
-    def _valores_fts(
-        cls,
-        consulta: ConsultaJurisprudencia | ConsultaLegislacao,
-    ) -> list[str]:
-        if isinstance(consulta, ConsultaJurisprudencia):
-            numero = cls._numero_jurisprudencia(consulta)
-            if numero:
-                return [cls._normalizar_numero(numero)]
-            if consulta.numero_sumula is not None:
-                valores = [
-                    "sumula",
-                    cls._normalizar_numero(str(consulta.numero_sumula)),
-                ]
-                if consulta.sumula_vinculante:
-                    valores.insert(1, "vinculante")
-                return valores
-            raise ValueError("jurisprudência sem processo ou súmula")
-        if not consulta.numero_artigo:
-            raise ValueError("legislação sem número de artigo")
-        valores = [f"Artigo {cls._normalizar_numero(consulta.numero_artigo)}"]
-        diploma = cls._normalizar_diploma(consulta)
-        if diploma:
-            valores.append(diploma)
-        return valores
-
-    @staticmethod
-    def _normalizar_numero(valor: str) -> str:
-        trecho_numerico = re.search(r"\d.*", valor)
-        if not trecho_numerico:
-            raise ValueError(f"número inválido: {valor}")
-        valor = re.sub(
-            r"[/\-\s(]+[A-Za-z]{2}\)?\s*$",
-            "",
-            trecho_numerico.group(),
-        ).translate(
-            str.maketrans(
-                {
-                    "O": "0",
-                    "o": "0",
-                    "I": "1",
-                    "l": "1",
-                    "S": "5",
-                    "g": "9",
-                    "G": "6",
-                }
-            )
-        )
-        digitos = "".join(re.findall(r"\d", valor))
-        if not digitos:
-            raise ValueError(f"número inválido: {valor}")
-        if len(digitos) == 20:
-            tamanhos = (7, 2, 4, 1, 2, 4)
-            partes = []
-            inicio = 0
-            for tamanho in tamanhos:
-                partes.append(digitos[inicio : inicio + tamanho])
-                inicio += tamanho
-            return " ".join(partes)
-        primeira = len(digitos) % 3 or 3
-        return " ".join(
-            [digitos[:primeira]]
-            + [
-                digitos[indice : indice + 3]
-                for indice in range(primeira, len(digitos), 3)
-            ]
-        )
-
-    @staticmethod
-    def _normalizar_classe(valor: str) -> str:
-        classes = {
-            "ARESP": "AGRAVO EM RECURSO ESPECIAL",
-            "RESP": "RECURSO ESPECIAL",
-            "RHC": "RECURSO EM HABEAS CORPUS",
-            "RMS": "RECURSO EM MANDADO DE SEGURANCA",
-            "RCL": "RECLAMACAO",
-            "RR": "RECURSO DE REVISTA",
-        }
-        return classes.get(valor.upper(), valor)
-
-    @classmethod
-    def _normalizar_diploma(cls, consulta: ConsultaLegislacao) -> str | None:
-        if consulta.numero_diploma:
-            numero = cls._normalizar_numero(consulta.numero_diploma)
-            return numero
-        if not consulta.diploma:
-            return None
-        diploma = " ".join(re.findall(r"\w+", consulta.diploma)).casefold()
-        if "constituição" in diploma or "constituicao" in diploma:
-            return "Constituicao Federal"
-        return None
 
     @staticmethod
     def _classificar(registros: list[dict[str, Any]]) -> ResultadoVeracidade:
