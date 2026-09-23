@@ -22,6 +22,19 @@
             "console": "integratedTerminal",
             "envFile": "${workspaceFolder}/.env",
             "justMyCode": true
+        },
+        {
+            "name": "Python Debugger: Evaluate entities",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${workspaceFolder}/scripts/evaluate_entities.py",
+            "args": [
+                "${workspaceFolder}/outputs/run-007-gemma-4-12b-it-qat-w4a16-ct/03-entities"
+            ],
+            "cwd": "${workspaceFolder}",
+            "console": "integratedTerminal",
+            "envFile": "${workspaceFolder}/.env",
+            "justMyCode": true
         }
     ]
 }
