@@ -29,17 +29,17 @@ _DIPLOMAS = (
     "'Código Eleitoral', 'Consolidação das Leis do Trabalho', 'Lei Complementar', 'Lei'"
 )
 _COLUNAS_PLANEJADAS = {
-    "formato_numero": (
-        "TEXT CHECK (formato_numero IS NULL OR "
-        "formato_numero IN ('cnj', 'classico', 'sem_numero'))"
+    "numero_processo_cnj": (
+        "TEXT CHECK (numero_processo_cnj IS NULL OR "
+        "(numero_processo_cnj NOT GLOB '*[^0-9]*' AND length(numero_processo_cnj) = 20))"
     ),
-    "numero_processo": (
-        "TEXT CHECK ("
-        "(numero_processo IS NULL AND formato_numero IS NULL) OR "
-        "(numero_processo IS NULL AND formato_numero = 'sem_numero') OR "
-        "(numero_processo <> '' AND numero_processo NOT GLOB '*[^0-9]*' AND "
-        "((formato_numero = 'cnj' AND length(numero_processo) = 20) OR "
-        "(formato_numero = 'classico' AND length(numero_processo) BETWEEN 1 AND 19))))"
+    "numero_classe_tribunal": (
+        "TEXT CHECK (numero_classe_tribunal IS NULL OR "
+        "(numero_classe_tribunal <> '' AND numero_classe_tribunal NOT GLOB '*[^0-9]*'))"
+    ),
+    "numero_registro_tribunal": (
+        "TEXT CHECK (numero_registro_tribunal IS NULL OR "
+        "(numero_registro_tribunal <> '' AND numero_registro_tribunal NOT GLOB '*[^0-9]*'))"
     ),
     "classe_processual": f"TEXT CHECK (classe_processual IS NULL OR classe_processual IN ({_CLASSES}))",
     "cadeia_recursal": (
@@ -61,12 +61,15 @@ _COLUNAS_PLANEJADAS = {
     "numero_artigo": "TEXT CHECK (numero_artigo IS NULL OR trim(numero_artigo) <> '')",
 }
 _INDICES_PLANEJADOS = {
-    "idx_documentos_numero_processo": (
-        "ON documentos(numero_processo) WHERE natureza = 'acordao'"
+    "idx_documentos_processo_cnj": (
+        "ON documentos(numero_processo_cnj) WHERE natureza = 'acordao'"
     ),
-    "idx_documentos_processo_classe": (
-        "ON documentos(numero_processo, classe_processual, tribunal) "
+    "idx_documentos_classe_tribunal": (
+        "ON documentos(numero_classe_tribunal, classe_processual, tribunal) "
         "WHERE natureza = 'acordao'"
+    ),
+    "idx_documentos_registro_tribunal": (
+        "ON documentos(numero_registro_tribunal, tribunal) WHERE natureza = 'acordao'"
     ),
     "idx_documentos_sumula": (
         "ON documentos(tribunal, numero_sumula, sumula_vinculante) "

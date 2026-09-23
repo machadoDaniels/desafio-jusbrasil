@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import Literal
+from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
@@ -126,7 +126,8 @@ class _MetadadosAcordaoAgente(Contract):
     cadeia_recursal: list[ClasseProcessual] | None = Field(
         default=None,
         description=(
-            "Todas as classes processuais explicitamente presentes na cadeia recursal. Deve incluir classe_processual quando ela não for "
+            "Todas as classes processuais explicitamente presentes na cadeia recursal, "
+            "sem ordem nem repetições. Deve incluir classe_processual quando ela não for "
             "null."
         ),
     )
@@ -151,13 +152,11 @@ class _MetadadosAcordaoAgente(Contract):
         "numero_processo_cnj", "numero_classe_tribunal", "numero_registro_tribunal"
     )
     @classmethod
-    def validar_numeros(cls, valor: str | None, info: object) -> str | None:
+    def validar_numeros(cls, valor: str | None, info: Any) -> str | None:
         if valor is None:
             return None
         if not valor.isascii() or not valor.isdigit():
             raise ValueError("números devem conter somente dígitos ASCII")
-        if getattr(info, "field_name") == "numero_processo_cnj" and len(valor) != 20:
-            raise ValueError("numero_processo_cnj deve conter 20 dígitos")
         return valor
 
     @model_validator(mode="after")
@@ -175,6 +174,13 @@ class MetadadosAcordao(_MetadadosAcordaoAgente):
     """Metadados de acórdão completos após normalização determinística."""
 
     relator_norm: str | None = None
+
+    @field_validator("numero_processo_cnj")
+    @classmethod
+    def validar_cnj_normalizado(cls, valor: str | None) -> str | None:
+        if valor is not None and len(valor) != 20:
+            raise ValueError("numero_processo_cnj deve conter 20 dígitos")
+        return valor
 
     @field_validator("relator_norm")
     @classmethod
