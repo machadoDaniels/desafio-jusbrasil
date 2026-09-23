@@ -135,6 +135,46 @@ class VerificadorVeracidade:
             linhas = conexao.execute(sql, parametros).fetchall()
         return [dict(linha) for linha in linhas], sql, parametros
 
+    @staticmethod
+    def _filtro_identificadores(
+        consulta: ConsultaJurisprudencia,
+        colunas: set[str],
+    ) -> tuple[str, list[Any], bool] | None:
+        if consulta.numero_processo_cnj and "numero_processo_cnj" in colunas:
+            return (
+                "numero_processo_cnj = ?",
+                [re.sub(r"\D", "", consulta.numero_processo_cnj)],
+                True,
+            )
+
+        valores = list(
+            dict.fromkeys(
+                re.sub(r"\D", "", valor)
+                for valor in (
+                    consulta.numero_classe_tribunal,
+                    consulta.numero_registro_tribunal,
+                )
+                if valor
+            )
+        )
+        colunas_identificadoras = [
+            coluna
+            for coluna in ("numero_classe_tribunal", "numero_registro_tribunal")
+            if coluna in colunas
+        ]
+        if not valores or not colunas_identificadoras:
+            return None
+
+        marcadores = ", ".join("?" for _ in valores)
+        filtro = (
+            "("
+            + " OR ".join(
+                f"{coluna} IN ({marcadores})" for coluna in colunas_identificadoras
+            )
+            + ")"
+        )
+        return filtro, valores * len(colunas_identificadoras), False
+
     @classmethod
     def _consulta_estruturada(
         cls,
@@ -144,24 +184,11 @@ class VerificadorVeracidade:
         filtros: list[str]
         parametros: list[Any]
         if isinstance(consulta, ConsultaJurisprudencia):
-            identificadores = (
-                ("numero_processo_cnj", consulta.numero_processo_cnj),
-                ("numero_registro_tribunal", consulta.numero_registro_tribunal),
-                ("numero_classe_tribunal", consulta.numero_classe_tribunal),
-            )
-            identificador = next(
-                (
-                    (coluna, valor)
-                    for coluna, valor in identificadores
-                    if valor and coluna in colunas
-                ),
-                None,
-            )
+            identificador = cls._filtro_identificadores(consulta, colunas)
             if identificador is not None:
-                coluna, valor = identificador
-                filtros = ["natureza = 'acordao'", f"{coluna} = ?"]
-                parametros = [re.sub(r"\D", "", valor)]
-                if coluna != "numero_processo_cnj" and consulta.tribunal:
+                filtro, parametros, eh_cnj = identificador
+                filtros = ["natureza = 'acordao'", filtro]
+                if not eh_cnj and consulta.tribunal:
                     filtros.append("tribunal = ? COLLATE NOCASE")
                     parametros.append(consulta.tribunal)
             elif consulta.numero_sumula is not None and "numero_sumula" in colunas:
@@ -203,24 +230,17 @@ class VerificadorVeracidade:
         )
         return sql, parametros
 
-    @staticmethod
+    @classmethod
     def _consulta_processo_desambiguada(
+        cls,
         consulta: ConsultaJurisprudencia,
         colunas: set[str],
     ) -> tuple[str, list[Any]] | None:
-        identificadores = (
-            ("numero_processo_cnj", consulta.numero_processo_cnj),
-            ("numero_registro_tribunal", consulta.numero_registro_tribunal),
-            ("numero_classe_tribunal", consulta.numero_classe_tribunal),
-        )
-        coluna, valor = next(
-            (item for item in identificadores if item[1] and item[0] in colunas),
-            ("", None),
-        )
-        if valor is None:
+        identificador = cls._filtro_identificadores(consulta, colunas)
+        if identificador is None:
             return None
-        filtros = ["natureza = 'acordao'", f"{coluna} = ?"]
-        parametros: list[Any] = [re.sub(r"\D", "", valor)]
+        filtro, parametros, _ = identificador
+        filtros = ["natureza = 'acordao'", filtro]
         opcionais = (
             ("tribunal", consulta.tribunal),
             ("uf", consulta.uf),
