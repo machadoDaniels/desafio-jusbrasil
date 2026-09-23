@@ -11,8 +11,17 @@ from pathlib import Path
 from typing import Any
 
 from openai import omit
+from tqdm import tqdm
 
-from .contracts import Contract, StageConfig
+from .contracts import (
+    Classificacao,
+    Contract,
+    DocumentoClassificado,
+    DocumentoPredito,
+    Predicao,
+    Resolucao,
+    StageConfig,
+)
 
 _PADRAO_CNJ = re.compile(
     r"(?<!\d)(\d{1,7})\s*-\s*(\d{2})\s*\.\s*(\d{4})\s*\.\s*"
