@@ -37,28 +37,26 @@ from .utils import (
     escrever_saida_documento,
     ler_documento,
     listar_resultados,
-    normalizar_numero_processo,
+    normalizar_numero_cnj,
     normalizar_relator,
 )
 
 _PROMPT_JURISPRUDENCIA = """Extraia os campos de identificação desta citação de
 jurisprudência brasileira. Não escreva SQL e não avalie sua veracidade.
 
-Para processos e recursos, extraia número e formato do processo, classe principal,
-cadeia recursal, tribunal, UF, ano do julgamento e relator. A ordem da cadeia recursal
-não tem significado. O ano dentro de um número CNJ não é o ano do julgamento.
-
-Para súmulas, extraia o número e indique se é vinculante. Preencha somente dados
-explícitos ou decorrentes de abreviações jurídicas inequívocas."""
+Para processos e recursos, extraia os identificadores do processo julgado, classe principal,
+cadeia recursal, tribunal, UF, ano do julgamento e relator. Para súmulas, extraia o número e
+indique se é vinculante. Preencha somente dados explícitos ou decorrentes de abreviações
+jurídicas inequívocas."""
 
 _LOG = logging.getLogger(__name__)
 
 _PROMPT_LEI = """Extraia os campos de identificação desta citação de legislação
 brasileira. Não escreva SQL e não avalie sua veracidade.
 
-Extraia o número do artigo, o diploma e, quando disponíveis, o número e o ano do
-diploma. Normalize siglas jurídicas inequívocas, como CPC, CF, CLT, CDC, CC e CPP,
-para o nome conhecido do diploma. Não invente campos ausentes."""
+Extraia o número do artigo, o diploma e, quando disponíveis, o número e o ano do diploma.
+Normalize siglas jurídicas inequívocas, como CPC, CF, CLT, CDC, CC e CPP, para o nome
+conhecido do diploma. Não invente campos ausentes."""
 
 
 def _prompt_veracidade(tipo: TipoCitacao) -> str:
@@ -156,8 +154,8 @@ class AgenteExtratorEntidades:
         if consulta is None:
             raise RuntimeError("o modelo não retornou entidades estruturadas")
         if candidato.tipo == TipoCitacao.JURISPRUDENCIA:
-            numero, formato = normalizar_numero_processo(
-                consulta.numero_processo, candidato.trecho
+            numero_cnj = normalizar_numero_cnj(
+                consulta.numero_processo_cnj, candidato.trecho
             )
             numero_sumula = consulta.numero_sumula
             natureza = (
@@ -175,8 +173,17 @@ class AgenteExtratorEntidades:
             dados = consulta.model_dump()
             dados.update(
                 natureza=natureza,
-                numero_processo=numero,
-                formato_numero=formato,
+                numero_processo_cnj=numero_cnj,
+                numero_classe_tribunal=(
+                    re.sub(r"\D", "", consulta.numero_classe_tribunal)
+                    if consulta.numero_classe_tribunal
+                    else None
+                ),
+                numero_registro_tribunal=(
+                    re.sub(r"\D", "", consulta.numero_registro_tribunal)
+                    if consulta.numero_registro_tribunal
+                    else None
+                ),
                 relator_norm=normalizar_relator(consulta.relator, self._relatores),
                 sumula_vinculante=vinculante,
             )

@@ -194,9 +194,27 @@ class ConsultaJurisprudenciaAgente(Contract):
         default=None,
         description="'sumula' de súmula; 'acordao' para processo ou recurso.",
     )
-    numero_processo_cnj: str | None = None
-    numero_classe_tribunal: str | None = None
-    numero_registro_tribunal: str | None = None
+    numero_processo_cnj: str | None = Field(
+        default=None,
+        description=(
+            "Número único CNJ do processo julgado, somente com 20 dígitos e zeros à "
+            "esquerda. Não use CNJ de processo apenas mencionado."
+        ),
+    )
+    numero_classe_tribunal: str | None = Field(
+        default=None,
+        description=(
+            "Número sequencial do feito junto da classe do tribunal, somente com dígitos: "
+            "por exemplo, Rcl 76532 ou REsp 1741784."
+        ),
+    )
+    numero_registro_tribunal: str | None = Field(
+        default=None,
+        description=(
+            "Número de registro do tribunal, somente com dígitos: por exemplo, o STJ "
+            "2022/0187319-4 vira 202201873194."
+        ),
+    )
     classe_processual: ClasseProcessual | None = Field(
         default=None,
         description="Classe do processo ou recurso principal, independentemente da cadeia.",
@@ -239,27 +257,22 @@ class ConsultaJurisprudenciaAgente(Contract):
         ),
     )
 
-    @field_validator(
-        "numero_processo_cnj", "numero_classe_tribunal", "numero_registro_tribunal"
-    )
-    @classmethod
-    def validar_numeros(cls, valor: str | None, info: Any) -> str | None:
-        if valor is None:
-            return None
-        if not valor.isascii() or not valor.isdigit():
-            raise ValueError(f"{info.field_name} deve conter somente dígitos ASCII")
-        return valor
-
 
 class ConsultaJurisprudencia(ConsultaJurisprudenciaAgente):
     """Consulta de jurisprudência normalizada para busca na base canônica."""
 
     relator_norm: str | None = None
 
-    @field_validator("numero_processo_cnj")
+    @field_validator(
+        "numero_processo_cnj", "numero_classe_tribunal", "numero_registro_tribunal"
+    )
     @classmethod
-    def validar_cnj_normalizado(cls, valor: str | None) -> str | None:
-        if valor is not None and len(valor) != 20:
+    def validar_numeros_normalizados(cls, valor: str | None, info: Any) -> str | None:
+        if valor is None:
+            return None
+        if not valor.isascii() or not valor.isdigit():
+            raise ValueError(f"{info.field_name} deve conter somente dígitos ASCII")
+        if info.field_name == "numero_processo_cnj" and len(valor) != 20:
             raise ValueError("numero_processo_cnj deve conter 20 dígitos")
         return valor
 

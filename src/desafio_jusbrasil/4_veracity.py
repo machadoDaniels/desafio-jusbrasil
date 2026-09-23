@@ -57,13 +57,24 @@ class VerificadorVeracidade:
             "resultado": resultado.model_dump(mode="json"),
         }
 
+    @staticmethod
+    def _numero_jurisprudencia(consulta: ConsultaJurisprudencia) -> str | None:
+        return (
+            consulta.numero_processo_cnj
+            or consulta.numero_registro_tribunal
+            or consulta.numero_classe_tribunal
+        )
+
     def _consultar_base(
         self,
         consulta: ConsultaJurisprudencia | ConsultaLegislacao,
     ) -> tuple[list[dict[str, Any]], str, list[Any]]:
         if isinstance(consulta, ConsultaJurisprudencia):
-            if not consulta.numero_processo and consulta.numero_sumula is None:
-                raise ValueError("jurisprudência sem processo ou súmula")
+            if (
+                not self._numero_jurisprudencia(consulta)
+                and consulta.numero_sumula is None
+            ):
+                raise ValueError("jurisprudência sem identificador ou súmula")
         elif not consulta.numero_artigo:
             raise ValueError("legislação sem número de artigo")
 
@@ -81,7 +92,7 @@ class VerificadorVeracidade:
                 if (
                     len(linhas) > 1
                     and isinstance(consulta, ConsultaJurisprudencia)
-                    and consulta.numero_processo
+                    and self._numero_jurisprudencia(consulta)
                 ):
                     desambiguada = self._consulta_processo_desambiguada(
                         consulta, colunas
@@ -133,9 +144,26 @@ class VerificadorVeracidade:
         filtros: list[str]
         parametros: list[Any]
         if isinstance(consulta, ConsultaJurisprudencia):
-            if consulta.numero_processo and "numero_processo" in colunas:
-                filtros = ["natureza = 'acordao'", "numero_processo = ?"]
-                parametros = [re.sub(r"\D", "", consulta.numero_processo)]
+            identificadores = (
+                ("numero_processo_cnj", consulta.numero_processo_cnj),
+                ("numero_registro_tribunal", consulta.numero_registro_tribunal),
+                ("numero_classe_tribunal", consulta.numero_classe_tribunal),
+            )
+            identificador = next(
+                (
+                    (coluna, valor)
+                    for coluna, valor in identificadores
+                    if valor and coluna in colunas
+                ),
+                None,
+            )
+            if identificador is not None:
+                coluna, valor = identificador
+                filtros = ["natureza = 'acordao'", f"{coluna} = ?"]
+                parametros = [re.sub(r"\D", "", valor)]
+                if coluna != "numero_processo_cnj" and consulta.tribunal:
+                    filtros.append("tribunal = ? COLLATE NOCASE")
+                    parametros.append(consulta.tribunal)
             elif consulta.numero_sumula is not None and "numero_sumula" in colunas:
                 filtros = ["natureza = 'sumula'", "numero_sumula = ?"]
                 parametros = [consulta.numero_sumula]
@@ -180,8 +208,19 @@ class VerificadorVeracidade:
         consulta: ConsultaJurisprudencia,
         colunas: set[str],
     ) -> tuple[str, list[Any]] | None:
-        filtros = ["natureza = 'acordao'", "numero_processo = ?"]
-        parametros: list[Any] = [re.sub(r"\D", "", consulta.numero_processo or "")]
+        identificadores = (
+            ("numero_processo_cnj", consulta.numero_processo_cnj),
+            ("numero_registro_tribunal", consulta.numero_registro_tribunal),
+            ("numero_classe_tribunal", consulta.numero_classe_tribunal),
+        )
+        coluna, valor = next(
+            (item for item in identificadores if item[1] and item[0] in colunas),
+            ("", None),
+        )
+        if valor is None:
+            return None
+        filtros = ["natureza = 'acordao'", f"{coluna} = ?"]
+        parametros: list[Any] = [re.sub(r"\D", "", valor)]
         opcionais = (
             ("tribunal", consulta.tribunal),
             ("uf", consulta.uf),
@@ -209,7 +248,7 @@ class VerificadorVeracidade:
         valores = cls._valores_fts(consulta)
         if (
             isinstance(consulta, ConsultaJurisprudencia)
-            and consulta.numero_processo
+            and cls._numero_jurisprudencia(consulta)
             and consulta.cadeia_recursal
             and len(consulta.cadeia_recursal) > 1
         ):
@@ -226,8 +265,9 @@ class VerificadorVeracidade:
         consulta: ConsultaJurisprudencia | ConsultaLegislacao,
     ) -> list[str]:
         if isinstance(consulta, ConsultaJurisprudencia):
-            if consulta.numero_processo:
-                return [cls._normalizar_numero(consulta.numero_processo)]
+            numero = cls._numero_jurisprudencia(consulta)
+            if numero:
+                return [cls._normalizar_numero(numero)]
             if consulta.numero_sumula is not None:
                 valores = [
                     "sumula",
