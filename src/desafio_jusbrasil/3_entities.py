@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import argparse
 import asyncio
 import json
 import logging
@@ -42,21 +43,18 @@ from .utils import (
 )
 
 _PROMPT_JURISPRUDENCIA = """Extraia os campos de identificação desta citação de
-jurisprudência brasileira. Não escreva SQL e não avalie sua veracidade.
+jurisprudência brasileira.
 
-Para processos e recursos, extraia os identificadores do processo julgado, classe principal,
-cadeia recursal, tribunal, UF, ano do julgamento e relator. Para súmulas, extraia o número e
-indique se é vinculante. Preencha somente dados explícitos ou decorrentes de abreviações
+Preencha somente dados explícitos ou decorrentes de abreviações
 jurídicas inequívocas."""
 
 _LOG = logging.getLogger(__name__)
 
 _PROMPT_LEI = """Extraia os campos de identificação desta citação de legislação
-brasileira. Não escreva SQL e não avalie sua veracidade.
+brasileira.
 
-Extraia o número do artigo, o diploma e, quando disponíveis, o número e o ano do diploma.
-Normalize siglas jurídicas inequívocas, como CPC, CF, CLT, CDC, CC e CPP, para o nome
-conhecido do diploma. Não invente campos ausentes."""
+Preencha somente dados explícitos ou decorrentes de abreviações
+jurídicas inequívocas."""
 
 
 def _prompt_veracidade(tipo: TipoCitacao) -> str:
@@ -262,8 +260,11 @@ async def _executar_entities_async(config: PipelineConfig, destino: Path) -> Non
 
 
 def main() -> None:
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--config", type=Path, default=Path("pipeline.yaml"))
+    args = parser.parse_args()
     load_dotenv()
-    config = PipelineConfig.from_yaml(Path("pipeline.yaml"))
+    config = PipelineConfig.from_yaml(args.config)
     destino = config.workdir / "03-entities"
     etapa = config.entities
     escrever_manifesto_etapa(destino, "entities", etapa)

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import argparse
 import asyncio
 from importlib import import_module
 from pathlib import Path
@@ -110,9 +111,9 @@ class Orquestrador:
         materializar(veracidade, workdir / "predictions")
 
 
-async def _main() -> None:
+async def _main(caminho_configuracao: Path) -> None:
     load_dotenv()
-    config = PipelineConfig.from_yaml(Path("pipeline.yaml"))
+    config = PipelineConfig.from_yaml(caminho_configuracao)
     escrever_manifesto_etapa(
         config.workdir / "01-extraction", "extractor", config.extractor
     )
@@ -142,7 +143,10 @@ async def _main() -> None:
 
 
 def main() -> None:
-    asyncio.run(_main())
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--config", type=Path, default=Path("pipeline.yaml"))
+    args = parser.parse_args()
+    asyncio.run(_main(args.config))
 
 
 if __name__ == "__main__":

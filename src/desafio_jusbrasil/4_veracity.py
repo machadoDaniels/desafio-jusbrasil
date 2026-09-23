@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import argparse
 import re
 import sqlite3
 from pathlib import Path
@@ -437,8 +438,11 @@ def executar_veracidade(
 def main() -> None:
     from .orchestrator import materializar
 
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--config", type=Path, default=Path("pipeline.yaml"))
+    args = parser.parse_args()
     load_dotenv()
-    config = PipelineConfig.from_yaml(Path("pipeline.yaml"))
+    config = PipelineConfig.from_yaml(args.config)
     entrada = config.workdir / "03-entities"
     destino = config.workdir / "04-veracity"
     escrever_manifesto_etapa(destino, "veracity")

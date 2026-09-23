@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import argparse
 import asyncio
 from pathlib import Path
 from typing import Any
@@ -312,8 +313,11 @@ async def _executar_completude_async(
 
 
 def main() -> None:
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--config", type=Path, default=Path("pipeline.yaml"))
+    args = parser.parse_args()
     load_dotenv()
-    config = PipelineConfig.from_yaml(Path("pipeline.yaml"))
+    config = PipelineConfig.from_yaml(args.config)
     entrada = config.workdir / "01-extraction"
     destino = config.workdir / "02-completeness"
     etapa = config.completeness
