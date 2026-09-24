@@ -47,9 +47,16 @@ def _checkpoint_reutilizavel(
         auditoria = json.loads(caminho_auditoria.read_text(encoding="utf-8"))
     except (OSError, ValueError):
         return None
-    if auditoria.get("modelo") != configuracao["model"] or auditoria.get(
-        "parametros", {}
-    ).get("base_url") != configuracao.get("base_url"):
+    parametros = auditoria.get("parametros", {})
+    if (
+        auditoria.get("modelo") != configuracao["model"]
+        or parametros.get("base_url") != configuracao.get("base_url")
+        or parametros.get("text_start_char_limit")
+        != configuracao.get("text_start_char_limit")
+        or parametros.get("text_end_char_limit")
+        != configuracao.get("text_end_char_limit")
+        or parametros.get("few_shot_path") != configuracao.get("few_shot_path")
+    ):
         return None
     if (
         resultado.documento_id != documento.documento_id
@@ -121,6 +128,15 @@ async def executar_async(
     config = {
         "_api_key": os.getenv(api_key_env) if api_key_env else None,
         "api_key_env": api_key_env,
+        "text_start_char_limit": configuracao.get("text_start_char_limit", 10_000),
+        "text_end_char_limit": configuracao.get("text_end_char_limit", 10_000),
+        "chat_template_kwargs": configuracao.get("chat_template_kwargs"),
+        "few_shot_path": configuracao.get("few_shot_path"),
+        "_few_shot": (
+            json.loads(Path(configuracao["few_shot_path"]).read_text(encoding="utf-8"))
+            if configuracao.get("few_shot_path")
+            else {}
+        ),
         **{
             chave: configuracao[chave]
             for chave in (

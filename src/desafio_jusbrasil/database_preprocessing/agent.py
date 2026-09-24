@@ -43,12 +43,28 @@ alfanuméricos do artigo. Campos ausentes devem ser nulos.""",
 }
 
 
-def _entrada_agente(documento: DocumentoFonte) -> dict[str, Any]:
+def _entrada_agente(
+    documento: DocumentoFonte,
+    text_start_char_limit: int | None,
+    text_end_char_limit: int | None,
+) -> dict[str, Any]:
     entrada = {"tribunal": documento.tribunal}
-    if documento.natureza == "acordao":
-        entrada.update(ano=documento.ano, texto=documento.texto)
+    if text_start_char_limit is None and text_end_char_limit is None:
+        texto = documento.texto
+    elif text_start_char_limit is None:
+        texto = documento.texto[-text_end_char_limit:] if text_end_char_limit else ""
+    elif text_end_char_limit is None:
+        texto = documento.texto[:text_start_char_limit]
+    elif len(documento.texto) <= text_start_char_limit + text_end_char_limit:
+        texto = documento.texto
     else:
-        entrada["texto"] = documento.texto
+        inicio = documento.texto[:text_start_char_limit]
+        fim = documento.texto[-text_end_char_limit:] if text_end_char_limit else ""
+        texto = inicio + fim
+    if documento.natureza == "acordao":
+        entrada.update(ano=documento.ano, texto=texto)
+    else:
+        entrada["texto"] = texto
     return entrada
 
 
@@ -57,6 +73,11 @@ def _requisicao(
     contrato: type[Contract],
     config: Mapping[str, Any],
 ) -> dict[str, Any]:
+    extra_body = {
+        chave: config[chave]
+        for chave in ("top_k", "chat_template_kwargs")
+        if config.get(chave) is not None
+    }
     return {
         "model": config["model"],
         "temperature": (
@@ -70,20 +91,34 @@ def _requisicao(
         ),
         "messages": [
             {"role": "system", "content": _PROMPTS[documento.natureza]},
+            *(
+                mensagem
+                for exemplo in config.get("_few_shot", {}).get(documento.natureza, [])
+                for mensagem in (
+                    {
+                        "role": "user",
+                        "content": json.dumps(exemplo["entrada"], ensure_ascii=False),
+                    },
+                    {
+                        "role": "assistant",
+                        "content": json.dumps(exemplo["saida"], ensure_ascii=False),
+                    },
+                )
+            ),
             {
                 "role": "user",
                 "content": json.dumps(
-                    _entrada_agente(documento),
+                    _entrada_agente(
+                        documento,
+                        config["text_start_char_limit"],
+                        config["text_end_char_limit"],
+                    ),
                     ensure_ascii=False,
                 ),
             },
         ],
         "response_format": contrato,
-        **(
-            {"extra_body": {"top_k": config["top_k"]}}
-            if config["top_k"] is not None
-            else {}
-        ),
+        **({"extra_body": extra_body} if extra_body else {}),
     }
 
 

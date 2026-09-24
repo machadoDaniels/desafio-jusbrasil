@@ -32,6 +32,16 @@
             "console": "integratedTerminal",
             "envFile": "${workspaceFolder}/.env",
             "justMyCode": true
+        },
+        {
+            "name": "Python Debugger: Stage 4 - Veracity",
+            "type": "debugpy",
+            "request": "launch",
+            "module": "desafio_jusbrasil.4_veracity",
+            "cwd": "${workspaceFolder}",
+            "console": "integratedTerminal",
+            "envFile": "${workspaceFolder}/.env",
+            "justMyCode": true
         }
     ]
 }

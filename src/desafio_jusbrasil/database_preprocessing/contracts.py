@@ -96,6 +96,7 @@ class _MetadadosAcordaoAgente(Contract):
 
     numero_processo_cnj: str | None = Field(
         default=None,
+        pattern=r"^[0-9]+$",
         description=(
             "Número único CNJ do processo julgado, somente com 20 dígitos. Não extraia "
             "CNJ de processo apenas mencionado no texto."
@@ -103,6 +104,7 @@ class _MetadadosAcordaoAgente(Contract):
     )
     numero_classe_tribunal: str | None = Field(
         default=None,
+        pattern=r"^[0-9]+$",
         description=(
             "Número sequencial do feito junto da classe do tribunal, somente com dígitos: "
             "por exemplo, Rcl 76532 ou REsp 1741784."
@@ -110,6 +112,7 @@ class _MetadadosAcordaoAgente(Contract):
     )
     numero_registro_tribunal: str | None = Field(
         default=None,
+        pattern=r"^[0-9]+$",
         description=(
             "Número de registro do tribunal, somente com dígitos: por exemplo, o STJ "
             "2022/0187319-4 vira 202201873194."
@@ -226,6 +229,7 @@ class MetadadosDispositivo(Contract):
     )
     numero_diploma: str | None = Field(
         default=None,
+        pattern=r"^[0-9]+$",
         description=(
             "Número do diploma contendo somente dígitos ASCII, sem pontos. Use null para "
             "a Constituição Federal ou quando o documento não trouxer número."
