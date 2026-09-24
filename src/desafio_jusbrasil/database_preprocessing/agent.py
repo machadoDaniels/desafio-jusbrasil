@@ -26,22 +26,6 @@ from .contracts import (
 
 _LOG = logging.getLogger(__name__)
 
-_PROMPTS = {
-    "acordao": """Extraia somente metadados jurídicos explicitamente sustentados pelo documento.
-Não use conhecimento externo e não invente valores. Extraia separadamente o CNJ do processo
-julgado, o número sequencial junto da classe do tribunal e o número de registro do tribunal;
-não use CNJ de processo apenas mencionado. Retorne números somente com algarismos. Extraia a
-classe principal, todas as classes da cadeia recursal e a UF. A cadeia não tem ordem nem
-repetições. Campos ausentes devem ser nulos.""",
-    "sumula": """Extraia somente os metadados explicitamente sustentados pela súmula. Não use
-conhecimento externo e não invente valores. Informe o número da súmula e se ela é vinculante;
-use nulo quando o documento não sustentar o campo.""",
-    "dispositivo": """Extraia somente os metadados legislativos explicitamente sustentados pelo
-dispositivo. Não use conhecimento externo e não invente valores. Normalize o diploma para o
-vocabulário permitido e retorne números de diploma somente com algarismos. Preserve sufixos
-alfanuméricos do artigo. Campos ausentes devem ser nulos.""",
-}
-
 
 def _entrada_agente(
     documento: DocumentoFonte,
@@ -90,7 +74,7 @@ def _requisicao(
             else omit
         ),
         "messages": [
-            {"role": "system", "content": _PROMPTS[documento.natureza]},
+            {"role": "system", "content": config["prompts"][documento.natureza]},
             *(
                 mensagem
                 for exemplo in config.get("_few_shot", {}).get(documento.natureza, [])
