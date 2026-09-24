@@ -247,6 +247,12 @@ def main() -> None:
         json.dumps(relatorio, ensure_ascii=False, indent=2) + "\n",
         encoding="utf-8",
     )
+    principais = {
+        chave: valor
+        for chave, valor in relatorio.items()
+        if not isinstance(valor, dict | list)
+    }
+    print(json.dumps(principais, ensure_ascii=False, indent=2))
 
 
 if __name__ == "__main__":

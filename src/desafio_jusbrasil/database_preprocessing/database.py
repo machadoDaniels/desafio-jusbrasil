@@ -143,14 +143,16 @@ def listar_documentos(origem: Path) -> list[DocumentoFonte]:
 
 
 def _validar_resultados(
-    origem: Path, resultados: Iterable[DocumentoEnriquecido]
+    origem: Path,
+    resultados: Iterable[DocumentoEnriquecido],
+    permitir_parcial: bool = False,
 ) -> list[DocumentoEnriquecido]:
     documentos = listar_documentos(origem)
     por_documento = {documento.documento_id: documento for documento in documentos}
     resultados_validados = [
         DocumentoEnriquecido.model_validate(resultado) for resultado in resultados
     ]
-    if len(resultados_validados) != len(por_documento):
+    if not permitir_parcial and len(resultados_validados) != len(por_documento):
         raise ValueError(
             "a quantidade de resultados não corresponde à quantidade de documentos"
         )
@@ -274,10 +276,14 @@ def materializar_banco(
     origem: Path,
     destino: Path,
     resultados: Iterable[DocumentoEnriquecido],
+    permitir_parcial: bool = False,
 ) -> dict[str, Any]:
-    """Copia, enriquece, valida e publica o SQLite por ``rename`` atômico."""
+    """Copia, enriquece, valida e publica o SQLite por ``rename`` atômico.
+
+    Com ``permitir_parcial``, documentos sem resultado mantêm as colunas novas nulas.
+    """
     destino.parent.mkdir(parents=True, exist_ok=True)
-    resultados_validados = _validar_resultados(origem, resultados)
+    resultados_validados = _validar_resultados(origem, resultados, permitir_parcial)
 
     with _conectar_somente_leitura(origem) as conexao_origem:
         objetos_fts_origem = _validar_schema_fts(conexao_origem)

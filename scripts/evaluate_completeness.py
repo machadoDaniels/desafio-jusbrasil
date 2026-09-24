@@ -103,6 +103,7 @@ def main() -> None:
         json.dumps(relatorio, ensure_ascii=False, indent=2) + "\n",
         encoding="utf-8",
     )
+    print(json.dumps(relatorio, ensure_ascii=False, indent=2))
 
 
 if __name__ == "__main__":

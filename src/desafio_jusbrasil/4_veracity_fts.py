@@ -170,7 +170,7 @@ def _numero_jurisprudencia(consulta: ConsultaJurisprudencia) -> str | None:
 
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--config", type=Path, default=Path("pipeline.yaml"))
+    parser.add_argument("--config", type=Path, default=Path("./configs/pipeline.yaml"))
     args = parser.parse_args()
     load_dotenv()
     config = PipelineConfig.from_yaml(args.config)

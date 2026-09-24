@@ -4,7 +4,14 @@ from __future__ import annotations
 
 from typing import Any, Literal
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
+from pydantic import (
+    BaseModel,
+    ConfigDict,
+    Field,
+    ValidationInfo,
+    field_validator,
+    model_validator,
+)
 
 type NaturezaDocumento = Literal["acordao", "sumula", "dispositivo"]
 type UF = Literal[
@@ -122,25 +129,27 @@ class _MetadadosAcordaoAgente(Contract):
         default=None,
         description=(
             "Classe principal do processo ou do recurso principal, usando uma das siglas "
-            "permitidas. Identifique-a independentemente da posição em cadeia_recursal; "
-            "não escolha automaticamente o recurso incidental mais recente."
+            "permitidas. A última classe da cadeia recursal."
         ),
     )
     cadeia_recursal: list[ClasseProcessual] | None = Field(
         default=None,
+        validate_default=True,
         description=(
             "Todas as classes processuais explicitamente presentes na cadeia recursal, "
-            "sem ordem nem repetições. Deve incluir classe_processual quando ela não for "
-            "null."
+            "sem ordem nem repetições. A cadeia recursal se repete aqui."
         ),
     )
 
     @field_validator("cadeia_recursal")
     @classmethod
-    def remover_repeticoes_da_cadeia(
-        cls, valor: list[ClasseProcessual] | None
+    def incluir_classe_na_cadeia(
+        cls, valor: list[ClasseProcessual] | None, info: ValidationInfo
     ) -> list[ClasseProcessual] | None:
-        return list(dict.fromkeys(valor)) if valor else valor
+        classe = info.data.get("classe_processual")
+        if classe is not None:
+            valor = [*(valor or []), classe]
+        return list(dict.fromkeys(valor)) if valor else None
 
     uf: UF | None = Field(
         default=None,
@@ -162,15 +171,6 @@ class _MetadadosAcordaoAgente(Contract):
             raise ValueError("números devem conter somente dígitos ASCII")
         return valor
 
-    @model_validator(mode="after")
-    def validar_classe(self) -> _MetadadosAcordaoAgente:
-        if (
-            self.classe_processual is not None
-            and self.cadeia_recursal
-            and self.classe_processual not in self.cadeia_recursal
-        ):
-            raise ValueError("classe_processual deve pertencer à cadeia_recursal")
-        return self
 
 
 class MetadadosAcordao(_MetadadosAcordaoAgente):

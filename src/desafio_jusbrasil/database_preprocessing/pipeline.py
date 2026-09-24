@@ -56,6 +56,7 @@ def _checkpoint_reutilizavel(
         or parametros.get("text_end_char_limit")
         != configuracao.get("text_end_char_limit")
         or parametros.get("few_shot_path") != configuracao.get("few_shot_path")
+        or ("prompts" in parametros and parametros["prompts"] != configuracao["prompts"])
     ):
         return None
     if (
@@ -81,6 +82,22 @@ def _carregar_relatores(origem: Path, destino: Path) -> dict[str, str]:
     ):
         raise ValueError(f"dicionário de relatores inválido: {caminho}")
     return relatores
+
+
+def _com_relator_norm(
+    resultado: DocumentoEnriquecido,
+    documento: DocumentoFonte,
+    relatores: Mapping[str, str],
+) -> DocumentoEnriquecido:
+    if not isinstance(resultado.campos, MetadadosAcordao):
+        return resultado
+    return resultado.model_copy(
+        update={
+            "campos": resultado.campos.model_copy(
+                update={"relator_norm": normalizar_relator(documento.relator, relatores)}
+            )
+        }
+    )
 
 
 def _cobertura(
@@ -130,6 +147,7 @@ async def executar_async(
         "api_key_env": api_key_env,
         "text_start_char_limit": configuracao.get("text_start_char_limit", 10_000),
         "text_end_char_limit": configuracao.get("text_end_char_limit", 10_000),
+        "prompts": configuracao["prompts"],
         "chat_template_kwargs": configuracao.get("chat_template_kwargs"),
         "few_shot_path": configuracao.get("few_shot_path"),
         "_few_shot": (
@@ -151,6 +169,7 @@ async def executar_async(
                 "retry_delay_seconds",
             )
         },
+        "request_timeout_seconds": configuracao.get("request_timeout_seconds"),
     }
     diretorio_auditoria.mkdir(parents=True, exist_ok=True)
     _escrever_json(
@@ -188,7 +207,14 @@ async def executar_async(
     semaforo = asyncio.Semaphore(config["max_concurrency"])
 
     async with AsyncOpenAI(
-        base_url=config["base_url"], api_key=config["_api_key"], max_retries=0
+        base_url=config["base_url"],
+        api_key=config["_api_key"],
+        max_retries=0,
+        **(
+            {"timeout": config["request_timeout_seconds"]}
+            if config["request_timeout_seconds"] is not None
+            else {}
+        ),
     ) as cliente:
         tarefas = [
             asyncio.create_task(
@@ -225,19 +251,8 @@ async def executar_async(
     documentos_por_id = {documento.documento_id: documento for documento in documentos}
     for indice, resultado in enumerate(resultados):
         documento = documentos_por_id[resultado.documento_id]
-        if isinstance(resultado.campos, MetadadosAcordao):
-            resultado = resultado.model_copy(
-                update={
-                    "campos": resultado.campos.model_copy(
-                        update={
-                            "relator_norm": normalizar_relator(
-                                documento.relator, relatores
-                            )
-                        }
-                    )
-                }
-            )
-            resultados[indice] = resultado
+        resultado = _com_relator_norm(resultado, documento, relatores)
+        resultados[indice] = resultado
         _escrever_json(
             diretorio_auditoria
             / "documentos"
@@ -292,3 +307,48 @@ def executar(
             configuracao=configuracao,
         )
     )
+
+
+def materializar(
+    *,
+    origem: Path,
+    destino: Path,
+    diretorio_auditoria: Path,
+) -> dict[str, Any]:
+    """Materializa o banco com os resultados já existentes no diretório de auditoria.
+
+    Não chama o modelo. Documentos sem ``resultado.json`` (por exemplo, em revisão)
+    ficam com as colunas novas nulas e são listados no relatório.
+    """
+    documentos_por_id = {
+        documento.documento_id: documento for documento in listar_documentos(origem)
+    }
+    relatores = _carregar_relatores(origem, destino)
+    resultados = []
+    for caminho in sorted((diretorio_auditoria / "documentos").glob("*/resultado.json")):
+        resultado = DocumentoEnriquecido.model_validate_json(
+            caminho.read_text(encoding="utf-8")
+        )
+        documento = documentos_por_id.get(resultado.documento_id)
+        if documento is None:
+            raise ValueError(f"resultado sem documento na origem: {caminho}")
+        resultados.append(_com_relator_norm(resultado, documento, relatores))
+    resultados.sort(key=lambda resultado: resultado.id)
+
+    sem_resultado = sorted(
+        set(documentos_por_id) - {resultado.documento_id for resultado in resultados}
+    )
+    relatorio: dict[str, Any] = {
+        "gerado_em": datetime.now(UTC).isoformat(),
+        "origem": str(origem),
+        "destino": str(destino),
+        "total_documentos": len(documentos_por_id),
+        "com_resultado": len(resultados),
+        "sem_resultado": sem_resultado,
+        "cobertura_por_natureza": _cobertura(resultados),
+        "materializacao": materializar_banco(
+            origem, destino, resultados, permitir_parcial=True
+        ),
+    }
+    _escrever_json(diretorio_auditoria / "relatorio_materializacao.json", relatorio)
+    return relatorio

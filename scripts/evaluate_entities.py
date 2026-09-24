@@ -332,6 +332,16 @@ def main() -> None:
         json.dumps(relatorio, ensure_ascii=False, indent=2) + "\n",
         encoding="utf-8",
     )
+    principais = {
+        chave: valor
+        for chave, valor in relatorio.items()
+        if not isinstance(valor, dict | list)
+    }
+    principais["acuracia_por_campo"] = {
+        campo: metricas_campo["acuracia"]
+        for campo, metricas_campo in relatorio["metricas_por_campo"].items()
+    }
+    print(json.dumps(principais, ensure_ascii=False, indent=2))
 
 
 if __name__ == "__main__":
