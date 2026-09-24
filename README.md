@@ -160,6 +160,14 @@ O run completo só materializa o banco se nenhum documento ficar em revisão. Pa
 uv run python -m desafio_jusbrasil.database_preprocessing --materializar
 ```
 
+Com `extrair_verbatim: true` na config, o agente também devolve, antes dos campos normalizados, o trecho literal do texto que sustenta cada campo. Os trechos ficam em `trechos` no `resultado.json` e não entram no banco. Para convertê-los em offsets do texto original:
+
+```bash
+uv run python scripts/gerar_spans_database_preprocessing.py outputs/database-preprocessing/<run>
+```
+
+O script grava `spans.jsonl` na pasta da run e imprime a taxa de trechos localizados por campo.
+
 Para comparar uma run com o gold padrão `outputs/database-preprocessing/run-gemini-gold`:
 
 ```bash
