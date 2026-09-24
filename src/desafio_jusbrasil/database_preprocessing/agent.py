@@ -14,6 +14,7 @@ from pydantic import ValidationError
 
 from ..utils import normalizar_numero_cnj
 from .contracts import (
+    CONTRATOS_COM_TRECHOS,
     Contract,
     DocumentoEnriquecido,
     DocumentoFonte,
@@ -22,6 +23,7 @@ from .contracts import (
     MetadadosDocumento,
     MetadadosSumula,
     _MetadadosAcordaoAgente,
+    _MetadadosDispositivoAgente,
 )
 
 _LOG = logging.getLogger(__name__)
@@ -62,22 +64,43 @@ def _requisicao(
         for chave in ("top_k", "chat_template_kwargs")
         if config.get(chave) is not None
     }
-    return {
-        "model": config["model"],
-        "temperature": (
-            config["temperature"] if config["temperature"] is not None else omit
+    entrada = json.dumps(
+        _entrada_agente(
+            documento,
+            config["text_start_char_limit"],
+            config["text_end_char_limit"],
         ),
-        "top_p": config["top_p"] if config["top_p"] is not None else omit,
-        "reasoning_effort": (
-            config["reasoning_effort"]
-            if config["reasoning_effort"] is not None
-            else omit
-        ),
-        "messages": [
+        ensure_ascii=False,
+    )
+    exemplos = config.get("_few_shot", {}).get(documento.natureza, [])
+    if config.get("nuextract_templates"):
+        # NuExtract: template, instruções e exemplos vão pelo chat template.
+        extra_body["chat_template_kwargs"] = {
+            **extra_body.get("chat_template_kwargs", {}),
+            "template": json.dumps(
+                config["nuextract_templates"][documento.natureza], ensure_ascii=False
+            ),
+            "instructions": config["prompts"][documento.natureza],
+        }
+        mensagens = [
+            *(
+                {
+                    "role": "developer",
+                    "content": [
+                        {"type": "text", "text": json.dumps(exemplo[chave], ensure_ascii=False)}
+                        for chave in ("entrada", "saida")
+                    ],
+                }
+                for exemplo in exemplos
+            ),
+            {"role": "user", "content": entrada},
+        ]
+    else:
+        mensagens = [
             {"role": "system", "content": config["prompts"][documento.natureza]},
             *(
                 mensagem
-                for exemplo in config.get("_few_shot", {}).get(documento.natureza, [])
+                for exemplo in exemplos
                 for mensagem in (
                     {
                         "role": "user",
@@ -89,18 +112,20 @@ def _requisicao(
                     },
                 )
             ),
-            {
-                "role": "user",
-                "content": json.dumps(
-                    _entrada_agente(
-                        documento,
-                        config["text_start_char_limit"],
-                        config["text_end_char_limit"],
-                    ),
-                    ensure_ascii=False,
-                ),
-            },
-        ],
+            {"role": "user", "content": entrada},
+        ]
+    return {
+        "model": config["model"],
+        "temperature": (
+            config["temperature"] if config["temperature"] is not None else omit
+        ),
+        "top_p": config["top_p"] if config["top_p"] is not None else omit,
+        "reasoning_effort": (
+            config["reasoning_effort"]
+            if config["reasoning_effort"] is not None
+            else omit
+        ),
+        "messages": mensagens,
         "response_format": contrato,
         **({"extra_body": extra_body} if extra_body else {}),
     }
@@ -123,7 +148,7 @@ def normalizar_campos(
             re.search(r"\bs[uú]mula\s+vinculante\b", documento.texto, re.IGNORECASE)
         )
         return MetadadosSumula.model_validate(dados)
-    return campos
+    return MetadadosDispositivo.model_validate(campos.model_dump())
 
 
 def _input_auditoria(
@@ -149,23 +174,36 @@ async def enriquecer_documento(
     contrato = {
         "acordao": _MetadadosAcordaoAgente,
         "sumula": MetadadosSumula,
-        "dispositivo": MetadadosDispositivo,
+        "dispositivo": _MetadadosDispositivoAgente,
     }[documento.natureza]
-    requisicao = _requisicao(documento, contrato, config)
+    contrato_requisicao = (
+        CONTRATOS_COM_TRECHOS[documento.natureza]
+        if config.get("extrair_verbatim")
+        else contrato
+    )
+    requisicao = _requisicao(documento, contrato_requisicao, config)
     ultimo_erro: Exception | None = None
 
     for tentativa in range(1, config["max_retries"] + 1):
         try:
             async with semaforo:
                 resposta = await cliente.chat.completions.parse(**requisicao)
-            campos = resposta.choices[0].message.parsed
-            if campos is None:
+            parsed = resposta.choices[0].message.parsed
+            if parsed is None:
                 raise ValueError("o modelo não retornou uma resposta estruturada")
+            campos = (
+                contrato.model_validate(parsed.model_dump(exclude={"trechos"}))
+                if config.get("extrair_verbatim")
+                else parsed
+            )
             resultado = DocumentoEnriquecido(
                 documento_id=documento.documento_id,
                 id=documento.id,
                 natureza=documento.natureza,
                 campos=normalizar_campos(documento, campos),
+                trechos=(
+                    parsed.trechos.model_dump() if config.get("extrair_verbatim") else None
+                ),
             )
             usage = getattr(resposta, "usage", None)
             return resultado, {
@@ -185,7 +223,7 @@ async def enriquecer_documento(
                     and valor is not None
                 },
                 "uso": usage.model_dump(mode="json") if usage is not None else None,
-                "input": _input_auditoria(requisicao, contrato),
+                "input": _input_auditoria(requisicao, contrato_requisicao),
                 "output": resposta.model_dump(
                     mode="json",
                     exclude={"choices": {"__all__": {"message": {"parsed"}}}},

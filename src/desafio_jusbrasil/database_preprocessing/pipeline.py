@@ -56,6 +56,7 @@ def _checkpoint_reutilizavel(
         or parametros.get("text_end_char_limit")
         != configuracao.get("text_end_char_limit")
         or parametros.get("few_shot_path") != configuracao.get("few_shot_path")
+        or parametros.get("extrair_verbatim", False) != configuracao["extrair_verbatim"]
         or ("prompts" in parametros and parametros["prompts"] != configuracao["prompts"])
     ):
         return None
@@ -150,6 +151,8 @@ async def executar_async(
         "prompts": configuracao["prompts"],
         "chat_template_kwargs": configuracao.get("chat_template_kwargs"),
         "few_shot_path": configuracao.get("few_shot_path"),
+        "nuextract_templates": configuracao.get("nuextract_templates"),
+        "extrair_verbatim": configuracao.get("extrair_verbatim", False),
         "_few_shot": (
             json.loads(Path(configuracao["few_shot_path"]).read_text(encoding="utf-8"))
             if configuracao.get("few_shot_path")
