@@ -1,7 +1,7 @@
 database_preprocessing:
   input: desafio-jusbrasil-bracis-2026/desafio1_bracis.db
-  output: data/desafio1_bracis_enriched_gemma4-12b-fewshot.db
-  audit_dir: outputs/database-preprocessing/exp-gemma4-12b-fewshot-v2
+  output: data/desafio1_bracis_enriched_gemma4-12b-fp8.db
+  audit_dir: outputs/database-preprocessing/exp-gemma4-12b-fp8
   model: google/gemma-4-12B-it-qat-w4a16-ct
   base_url: https://84a5-200-137-197-215.ngrok-free.app/v1
   api_key: $GEMMA_API_KEY
@@ -14,7 +14,8 @@ database_preprocessing:
   retry_delay_seconds: 1
   request_timeout_seconds: 40
   text_start_char_limit: 10000
-  text_end_char_limit: 2000
+  text_end_char_limit: 1000
+  extrair_verbatim: true
   few_shot_path: configs/few_shot_database_preprocessing.json
 
   prompts:

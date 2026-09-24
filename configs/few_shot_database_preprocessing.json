@@ -11,10 +11,10 @@
     "numero_processo_cnj": null,
     "numero_classe_tribunal": "55624",
     "numero_registro_tribunal": null,
-    "classe_processual": "Rcl",
+    "classe_processual": "Rcl — Reclamação",
     "cadeia_recursal": [
-     "AgRg",
-     "Rcl"
+     "AgRg — Agravo Regimental",
+     "Rcl — Reclamação"
     ],
     "uf": "RO"
    }
@@ -30,10 +30,10 @@
     "numero_processo_cnj": null,
     "numero_classe_tribunal": "1820970",
     "numero_registro_tribunal": "201901723537",
-    "classe_processual": "REsp",
+    "classe_processual": "REsp — Recurso Especial",
     "cadeia_recursal": [
-     "AgInt",
-     "REsp"
+     "AgInt — Agravo Interno",
+     "REsp — Recurso Especial"
     ],
     "uf": "SC"
    }
@@ -49,31 +49,12 @@
     "numero_processo_cnj": "00003788220166050151",
     "numero_classe_tribunal": null,
     "numero_registro_tribunal": null,
-    "classe_processual": "REspe",
+    "classe_processual": "REspe — Recurso Especial Eleitoral",
     "cadeia_recursal": [
-     "AgRg",
-     "REspe"
+     "AgRg — Agravo Regimental",
+     "REspe — Recurso Especial Eleitoral"
     ],
     "uf": "BA"
-   }
-  },
-  {
-   "documento_id": "doc_0752",
-   "entrada": {
-    "tribunal": "TST",
-    "ano": 2024,
-    "texto": "A C Ó R D Ã O (2ª Turma) GMMHM/lrv/rg AGRAVO DE INSTRUMENTO. RECURSO DE REVISTA INTERPOSTO NA ÉGIDE DA LEI N.º 13.015/2014. TERCEIRIZAÇÃO. LICITUDE EM ATIVIDADE-FIM DA TOMADORA DE SERVIÇOS. DECISÃO PROFERIDA PELO SUPREMO TRIBUNAL FEDERAL NOS AUTOS DO ARE-791.932-DF. TEMA 739 DA TABELA DE REPERCUSSÃO GERAL. TESE FIRMADA NOS AUTOS DA ADPF 324 E DO RE-958.252-MG, TEMA 725 DA TABELA DE REPERCUSSÃO GERAL. IMPOSSIBILIDADE DO RECONHECIMENTO DO VÍNCULO DIRETO. A Suprema Corte, em regime de repercussão geral, consolidou a tese jurídica segundo a qual \"é lícita a terceirização ou qualquer outra forma de divisão do trabalho entre pessoas jurídicas distintas, independentemente do objeto social das empreVistos, relatados e discutidos estes autos de Agravo de Instrumento em Recurso de Revista n . º TST-AIRR-88600-13.2008.5.24.0005 , em que é Agravante SINDICATO DOS TRABALHADORES EM TELECOMUNICAÇÕES DO ESTADO DE MATO GROSSO DO SUL - SINTTEL/MS e são Agravados SPCC - SÃO PAULO CONTACT CENTER LTDA. , TELEPERFORMANCE CRM S.A. e OI S.A. (EM RECUPERAÇÃO JUDICIAL). Trata-se de agravo de instrumento interposto contra decisão mediante a qual foi denegado seguimento ao recurso de revista. A recorrida apresentou contraminuta ao agravo de instrumento e contrarrazões ao recurso de revista. É o relatório. V"
-   },
-   "saida": {
-    "numero_processo_cnj": "00886001320085240005",
-    "numero_classe_tribunal": null,
-    "numero_registro_tribunal": null,
-    "classe_processual": "RR",
-    "cadeia_recursal": [
-     "AI",
-     "RR"
-    ],
-    "uf": "MS"
    }
   },
   {
@@ -87,9 +68,9 @@
     "numero_processo_cnj": "70000755820227000000",
     "numero_classe_tribunal": null,
     "numero_registro_tribunal": null,
-    "classe_processual": "APL",
+    "classe_processual": "APL — Apelação",
     "cadeia_recursal": [
-     "APL"
+     "APL — Apelação"
     ],
     "uf": "PR"
    }
@@ -103,7 +84,7 @@
     "texto": "Artigo 468 do Decreto-Lei nº 5.452, de 1º de maio de 1943 Art. 468 - Nos contratos individuais de trabalho só é lícita a alteração das respectivas condições por mútuo consentimento, e ainda assim desde que não resultem, direta ou indiretamente, prejuízos ao empregado, sob pena de nulidade da cláusula infringente desta garantia."
    },
    "saida": {
-    "diploma": "Consolidação das Leis do Trabalho",
+    "diploma": "CLT — Consolidação das Leis do Trabalho",
     "numero_diploma": "5452",
     "ano_diploma": 1943,
     "numero_artigo": "468"
