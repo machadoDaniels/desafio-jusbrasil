@@ -124,6 +124,16 @@ uv run python -m desafio_jusbrasil.3_entities
 uv run python -m desafio_jusbrasil.4_veracity
 ```
 
+A etapa 4 possui duas alternativas independentes, ambas consumindo `03-entities` e gerando `04-veracity`:
+
+```bash
+# Busca somente pelas colunas estruturadas
+uv run python -m desafio_jusbrasil.4_veracity
+
+# Busca somente pelo índice FTS5
+uv run python -m desafio_jusbrasil.4_veracity_fts
+```
+
 Todos os comandos aceitam um YAML alternativo, mantendo `pipeline.yaml` como padrão:
 
 ```bash
@@ -139,10 +149,25 @@ Para gerar uma cópia enriquecida sem alterar o SQLite original:
 
 ```bash
 uv run python -m desafio_jusbrasil.database_preprocessing
-uv run python -m desafio_jusbrasil.database_preprocessing --config pipeline-alternativo.yaml
+uv run python -m desafio_jusbrasil.database_preprocessing --config configs/database_preprocessing-alternativo.yaml
 ```
 
-Entrada, saída, diretório de auditoria, substituição do destino e parâmetros do agente ficam na seção `database_preprocessing` de `pipeline.yaml`. Origem e destino nunca podem ser o mesmo arquivo. O processo não modifica a tabela FTS existente.
+Entrada, saída, diretório de auditoria, substituição do destino, parâmetros do agente e os prompts de sistema por natureza (`prompts`) ficam na seção `database_preprocessing` de `configs/database_preprocessing.yaml`. Para testar outro prompt, copie esse arquivo em `configs/` e passe com `--config`. O campo opcional `few_shot_path` aponta para um JSON com exemplos por natureza (`{"acordao": [{"entrada": ..., "saida": ...}]}`), enviados como pares usuário/assistente antes do documento; veja `configs/database_preprocessing_fewshot.yaml`, que usa `configs/few_shot_database_preprocessing.json`. Mudar os prompts invalida os checkpoints do `audit_dir`. Origem e destino nunca podem ser o mesmo arquivo. O processo não modifica a tabela FTS existente.
+
+O run completo só materializa o banco se nenhum documento ficar em revisão. Para materializar com os resultados que já existem no `audit_dir`, sem chamar o modelo, use `--materializar`: documentos sem `resultado.json` ficam com as colunas novas nulas e são listados em `relatorio_materializacao.json`.
+
+```bash
+uv run python -m desafio_jusbrasil.database_preprocessing --materializar
+```
+
+Para comparar uma run com o gold padrão `outputs/database-preprocessing/run-gemini-gold`:
+
+```bash
+uv run python scripts/evaluate_database_preprocessing.py \
+  outputs/database-preprocessing/run-005
+```
+
+O relatório é salvo como `avaliacao.json` dentro da run avaliada. Use `--gold CAMINHO` para outra referência.
 
 ## Checkpoints e auditoria
 

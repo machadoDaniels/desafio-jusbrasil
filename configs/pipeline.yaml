@@ -1,6 +1,6 @@
 input_dir: desafio-jusbrasil-bracis-2026/txt
 workdir: outputs/run-010-gemma-4-12b-it-qat-w4a16-ct
-database: data/desafio1_bracis_enriched_gold.db
+database: data/desafio1_bracis_enriched_gemma4-12b-fewshot.db
 
 extractor:
   model: google/gemma-4-12B-it-qat-w4a16-ct
