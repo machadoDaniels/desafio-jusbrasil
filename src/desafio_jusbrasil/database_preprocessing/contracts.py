@@ -9,6 +9,7 @@ from pydantic import (
     ConfigDict,
     Field,
     ValidationInfo,
+    create_model,
     field_validator,
     model_validator,
 )
@@ -78,6 +79,41 @@ type Diploma = Literal[
     "Lei Complementar",
     "Lei",
 ]
+type ClasseProcessualAgente = Literal[
+    "AI — Agravo de Instrumento",
+    "APL — Apelação",
+    "AR — Ação Rescisória",
+    "AREsp — Agravo em Recurso Especial",
+    "AREspe — Agravo em Recurso Especial Eleitoral",
+    "ARR — Recurso de Revista com Agravo",
+    "AgInt — Agravo Interno",
+    "AgRg — Agravo Regimental",
+    "E — Embargos",
+    "EDcl — Embargos de Declaração",
+    "HC — Habeas Corpus",
+    "RE — Recurso Extraordinário",
+    "REsp — Recurso Especial",
+    "REspe — Recurso Especial Eleitoral",
+    "RHC — Recurso em Habeas Corpus",
+    "RMS — Recurso em Mandado de Segurança",
+    "RR — Recurso de Revista",
+    "RSE — Recurso em Sentido Estrito",
+    "Rcl — Reclamação",
+    "Rp — Representação",
+    "SLS — Suspensão de Liminar e de Sentença",
+]
+type DiplomaAgente = Literal[
+    "CF — Constituição Federal",
+    "CC — Código Civil",
+    "CDC — Código de Defesa do Consumidor",
+    "CPC — Código de Processo Civil",
+    "CPP — Código de Processo Penal",
+    "CPM — Código Penal Militar",
+    "CE — Código Eleitoral",
+    "CLT — Consolidação das Leis do Trabalho",
+    "LC — Lei Complementar",
+    "Lei",
+]
 
 
 class Contract(BaseModel):
@@ -125,27 +161,28 @@ class _MetadadosAcordaoAgente(Contract):
             "2022/0187319-4 vira 202201873194."
         ),
     )
-    classe_processual: ClasseProcessual | None = Field(
+    classe_processual: ClasseProcessualAgente | None = Field(
         default=None,
         description=(
             "Classe principal do processo ou do recurso principal, usando uma das siglas "
-            "permitidas. A última classe da cadeia recursal."
+            "permitidas. Identifique-a independentemente da posição em cadeia_recursal; "
+            "não escolha automaticamente o recurso incidental mais recente."
         ),
     )
-    cadeia_recursal: list[ClasseProcessual] | None = Field(
+    cadeia_recursal: list[ClasseProcessualAgente] | None = Field(
         default=None,
         validate_default=True,
         description=(
             "Todas as classes processuais explicitamente presentes na cadeia recursal, "
-            "sem ordem nem repetições. A cadeia recursal se repete aqui."
+            "sem ordem nem repetições."
         ),
     )
 
     @field_validator("cadeia_recursal")
     @classmethod
     def incluir_classe_na_cadeia(
-        cls, valor: list[ClasseProcessual] | None, info: ValidationInfo
-    ) -> list[ClasseProcessual] | None:
+        cls, valor: list[str] | None, info: ValidationInfo
+    ) -> list[str] | None:
         classe = info.data.get("classe_processual")
         if classe is not None:
             valor = [*(valor or []), classe]
@@ -176,7 +213,23 @@ class _MetadadosAcordaoAgente(Contract):
 class MetadadosAcordao(_MetadadosAcordaoAgente):
     """Metadados de acórdão completos após normalização determinística."""
 
+    classe_processual: ClasseProcessual | None = None
+    cadeia_recursal: list[ClasseProcessual] | None = Field(default=None, validate_default=True)
     relator_norm: str | None = None
+
+    @field_validator("classe_processual", mode="before")
+    @classmethod
+    def normalizar_classe(cls, valor: object) -> object:
+        return valor.split(" — ", 1)[0] if isinstance(valor, str) else valor
+
+    @field_validator("cadeia_recursal", mode="before")
+    @classmethod
+    def normalizar_classes(cls, valor: object) -> object:
+        if not isinstance(valor, list):
+            return valor
+        return [
+            item.split(" — ", 1)[0] if isinstance(item, str) else item for item in valor
+        ]
 
     @field_validator("numero_processo_cnj")
     @classmethod
@@ -213,10 +266,10 @@ class MetadadosSumula(Contract):
     )
 
 
-class MetadadosDispositivo(Contract):
-    """Metadados extraídos de um dispositivo legal."""
+class _MetadadosDispositivoAgente(Contract):
+    """Metadados de dispositivo legal que devem ser extraídos pelo agente."""
 
-    diploma: Diploma | None = Field(
+    diploma: DiplomaAgente | None = Field(
         default=None,
         description=(
             "Tipo canônico do diploma. Normalize Decreto-Lei 5.452/1943 como "
@@ -250,7 +303,7 @@ class MetadadosDispositivo(Contract):
     )
 
     @model_validator(mode="after")
-    def validar_numeros(self) -> MetadadosDispositivo:
+    def validar_numeros(self) -> _MetadadosDispositivoAgente:
         if self.numero_diploma is not None and (
             not self.numero_diploma.isascii() or not self.numero_diploma.isdigit()
         ):
@@ -260,7 +313,69 @@ class MetadadosDispositivo(Contract):
         return self
 
 
+class MetadadosDispositivo(_MetadadosDispositivoAgente):
+    """Metadados de dispositivo legal com o diploma canônico."""
+
+    diploma: Diploma | None = None
+
+    @field_validator("diploma", mode="before")
+    @classmethod
+    def normalizar_diploma(cls, valor: object) -> object:
+        return valor.split(" — ", 1)[-1] if isinstance(valor, str) else valor
+
+
 type MetadadosDocumento = MetadadosAcordao | MetadadosSumula | MetadadosDispositivo
+
+
+def _com_trechos(contrato: type[Contract]) -> type[Contract]:
+    """Contrato de requisição com os trechos literais antes dos campos normalizados.
+
+    Os validadores do contrato original são aplicados depois, ao revalidar a resposta.
+    """
+    campos = {
+        nome: (info.annotation, info)
+        for nome, info in contrato.model_fields.items()
+        if nome != "relator_norm"
+    }
+    trechos = create_model(
+        f"Trechos{contrato.__name__.removeprefix('_')}",
+        __base__=Contract,
+        **{
+            nome: (
+                list[str] | None if nome == "cadeia_recursal" else str | None,
+                Field(
+                    default=None,
+                    description=(
+                        (
+                            "Um trecho por classe da cadeia recursal, na mesma ordem. "
+                            if nome == "cadeia_recursal"
+                            else ""
+                        )
+                        + f"Trecho copiado exatamente como aparece no texto e que sustenta "
+                        f"{nome}, antes de qualquer normalização: mantenha pontos, "
+                        "barras, hífens, abreviações e maiúsculas (por exemplo, "
+                        "'2019/0172353-7', 'AG.REG. NA RECLAMAÇÃO 41.908', 'SANTA "
+                        "CATARINA', 'Decreto-Lei nº 5.452'). Nunca copie o valor já "
+                        "normalizado. Use null se o campo for nulo."
+                    ),
+                ),
+            )
+            for nome in campos
+        },
+    )
+    return create_model(
+        f"{contrato.__name__.removeprefix('_')}ComTrechos",
+        __base__=Contract,
+        trechos=(trechos, ...),
+        **campos,
+    )
+
+
+CONTRATOS_COM_TRECHOS: dict[NaturezaDocumento, type[Contract]] = {
+    "acordao": _com_trechos(_MetadadosAcordaoAgente),
+    "sumula": _com_trechos(MetadadosSumula),
+    "dispositivo": _com_trechos(_MetadadosDispositivoAgente),
+}
 
 
 class DocumentoEnriquecido(Contract):
@@ -270,6 +385,7 @@ class DocumentoEnriquecido(Contract):
     id: int
     natureza: NaturezaDocumento
     campos: MetadadosDocumento
+    trechos: dict[str, str | list[str] | None] | None = None
 
     @model_validator(mode="after")
     def validar_campos_por_natureza(self) -> DocumentoEnriquecido:
