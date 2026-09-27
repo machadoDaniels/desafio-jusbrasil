@@ -43,8 +43,22 @@ O QUE É CITAÇÃO
 
 O QUE NÃO É CITAÇÃO
 - Número dos autos do próprio documento no cabeçalho, protocolo, inscrição na OAB, "fls. 234/567", valor da causa.
-- Menção genérica a um diploma sem artigo ("o Código de Processo Civil", "a legislação de regência").
-
+- Menção a um diploma sem dispositivo numerado. Diploma é o nome ou a sigla de uma norma:
+  Constituição Federal, CF, Código Civil, CC, Código de Processo Civil, CPC, Código Penal, CP,
+  Código de Processo Penal, CPP, Código Penal Militar, CPM, CLT, CDC, Código Eleitoral,
+  Lei nº 8.078/1990, Lei Complementar nº 64/1990, Decreto-Lei nº 5.452/1943.
+  O diploma só vira citação quando vem com o número do dispositivo: "art. 373", "artigo 5º",
+  "art. 1º, I, 'g'", "§ 2º do art. 14". Sem número, não extraia, mesmo que a frase contenha
+  a palavra "artigo", "dispositivo" ou "norma":
+    "o artigo correspondente do Código de Processo Civil"  → NÃO é citação
+    "a lei que disciplina a prescrição"                      → NÃO é citação
+    "nos termos da legislação de regência"                   → NÃO é citação
+    "conforme o CPC"                                          → NÃO é citação
+    "art. 373, I, do CPC"                                     → É citação
+- Não avalie se a citação existe, está correta ou faz sentido. Artigos inexistentes,
+  números errados e referências vagas a um julgado DEVEM ser extraídos; verificar é tarefa de outra etapa.
+- Quando uma citação continua depois de uma quebra de linha o trecho inclui tudo até o fim do número.
+    
 LIMITES DO TRECHO
 - Inclua toda a cadeia de classes que antecede o número: "Terceiro AG.REG na Rcl nº 62.425/SP",
   "ED no AgR no AREspEl 0601514-91.2020.6.05.0000", "Embargos de Declaração no Recurso em Mandado de Segurança nº 67.101/RJ".
