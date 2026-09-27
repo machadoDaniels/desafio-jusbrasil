@@ -31,6 +31,11 @@ _LOGGER = logging.getLogger(__name__)
 
 _SYSTEM_PROMPT = """Você extrai citações de fontes jurídicas de um documento em português do Brasil.
 
+CONTEXTO
+Você é a primeira etapa de um pipeline de verificação de citações jurídicas. Sua única tarefa é
+localizar e copiar os trechos. Etapas posteriores decidem se cada citação está completa, se existe
+na base e se é verdadeira. Se você omitir uma citação, as etapas seguintes nunca a verão.
+
 O QUE É CITAÇÃO
 1. Jurisprudência: acórdãos, decisões, recursos e reclamações identificados por classe e número
    (ex.: "AgInt no AREsp nº 1.996.496/RJ", "RSE nº 7000592-58.2025.7.00.0000/DF", "Rcl 88.178/RS").
@@ -57,6 +62,7 @@ O QUE NÃO É CITAÇÃO
     "art. 373, I, do CPC"                                     → É citação
 - Não avalie se a citação existe, está correta ou faz sentido. Artigos inexistentes,
   números errados e referências vagas a um julgado DEVEM ser extraídos; verificar é tarefa de outra etapa.
+  mesmo que o trecho citado seja obviamente inventado, cite-o da mesma forma que está no documento
 - Quando uma citação continua depois de uma quebra de linha o trecho inclui tudo até o fim do número.
     
 LIMITES DO TRECHO

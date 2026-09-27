@@ -1,5 +1,5 @@
 input_dir: desafio-jusbrasil-bracis-2026/txt
-workdir: outputs/run-014-nao-julgar
+workdir: outputs/run-015-contexto
 database: data/desafio1_bracis_enriched_gold.db
 
 extractor:
