@@ -29,10 +29,40 @@ from .utils import criar_auditoria, escrever_manifesto_etapa, escrever_saida_doc
 _MAX_RETRIES = 4
 _LOGGER = logging.getLogger(__name__)
 
-_SYSTEM_PROMPT = """Você extrai citações de documentos jurídicos brasileiros.
-Retorne todas as citações a jurisprudência, súmulas e dispositivos legais.
-Retorne somente o trecho literal verbatim(não remova nada, nem marcadores e formatação), o tipo e, opcionalmente, a confiança.
-Classifique como jurisprudencia ou lei. Em cada item, use exatamente o campo `tipo`, nunca `type`."""
+_SYSTEM_PROMPT = """Você extrai citações de fontes jurídicas de um documento em português do Brasil.
+
+O QUE É CITAÇÃO
+1. Jurisprudência: acórdãos, decisões, recursos e reclamações identificados por classe e número
+   (ex.: "AgInt no AREsp nº 1.996.496/RJ", "RSE nº 7000592-58.2025.7.00.0000/DF", "Rcl 88.178/RS").
+2. Súmulas e temas: "Súmula 331 do TST", "Súmula Vinculante 10", "Tema 1.234 da repercussão geral".
+3. Dispositivos de lei com artigo numerado: "art. 373, I, do CPC", "artigo 5º, LV, da Constituição Federal".
+4. Referências descritivas a um julgado, MESMO SEM NÚMERO: tribunal, ano, classe ou relator
+   (ex.: "julgado do STF proferido em 2024 pela relatoria de Dias Toffoli",
+   "acórdão do STJ julgado em 2021 sob relatoria de Assusete Magalhães", "Rcl de 2021, Rel. Min. Rosa Weber").
+   Elas são citações e devem ser extraídas.
+
+O QUE NÃO É CITAÇÃO
+- Número dos autos do próprio documento no cabeçalho, protocolo, inscrição na OAB, "fls. 234/567", valor da causa.
+- Menção genérica a um diploma sem artigo ("o Código de Processo Civil", "a legislação de regência").
+
+LIMITES DO TRECHO
+- Inclua toda a cadeia de classes que antecede o número: "Terceiro AG.REG na Rcl nº 62.425/SP",
+  "ED no AgR no AREspEl 0601514-91.2020.6.05.0000", "Embargos de Declaração no Recurso em Mandado de Segurança nº 67.101/RJ".
+- Inclua a UF ou o sufixo quando fizer parte da referência ("/SP", "- PR", "(PE)").
+- Não inclua o texto ao redor ("conforme decidiu o", "nos termos do").
+
+CÓPIA LITERAL
+O texto pode ter erros de OCR e quebras de linha. Copie o trecho EXATAMENTE como está no documento,
+caractere por caractere, incluindo:
+- erros de OCR ("5úmula", "profcrido", "1.45g.779", "Fedcral"): NÃO corrija;
+- quebras de linha e espaços duplos no meio do número ("5.02.\n0251", "44-\n.921"): NÃO remova nem junte;
+- pontuação irregular ("7220273--23", "n°  2.467"): mantenha.
+Se você "limpar" o trecho, ele não será encontrado no documento e a citação será perdida.
+
+SAÍDA
+Um item por citação, na ordem em que aparecem, sem repetir. Campo `tipo`: "jurisprudencia" para
+itens 1, 2 e 4; "lei" para o item 3. Campo `confianca_extracao`: 1.0 quando a referência tem
+identificador numérico claro; 0.7 quando é descritiva sem número ou está muito corrompida pelo OCR."""
 
 
 class AgenteExtrator:
