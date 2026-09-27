@@ -44,10 +44,66 @@ from .utils import (
     normalizar_relator,
 )
 
-_PROMPT_JURISPRUDENCIA = """Extraia os campos de identificação desta citação de
-jurisprudência brasileira.
+_PROMPT_JURISPRUDENCIA = """CONTEXTO
+Você é a terceira etapa de um pipeline de verificação de citações jurídicas. As etapas
+anteriores já localizaram o trecho no documento e decidiram que ele é uma citação de
+jurisprudência. Sua tarefa é transformar o trecho em campos estruturados. A etapa seguinte
+não usa modelo: ela monta uma consulta SQL exata com os campos que você devolver e compara
+com uma base de acórdãos e súmulas. Se um número vier errado, quebrado ou em campo errado,
+a consulta não encontra o registro e uma citação verdadeira é marcada como inventada.
 
-Preencha somente dados explícitos ou decorrentes de abreviações jurídicas inequívocas.
+TAREFA
+Extraia os campos de identificação desta citação de jurisprudência brasileira.
+Preencha somente dados explícitos no trecho ou decorrentes de siglas jurídicas inequívocas.
+Campos ausentes ficam nulos. Não invente tribunal, UF ou ano. Não avalie se a citação
+existe: um número inexistente deve ser extraído do mesmo jeito.
+
+CAMPOS
+- natureza: "sumula" quando o trecho menciona Súmula; "acordao" para processo ou recurso.
+- numero_processo_cnj: o número único nacional, formato NNNNNNN-DD.AAAA.J.TR.OOOO.
+  Devolva os 20 dígitos, completando o primeiro bloco com zeros à esquerda até 7 dígitos.
+  Sempre que o trecho tiver esse formato, preencha ESTE campo e deixe numero_classe_tribunal
+  e numero_registro_tribunal nulos. Nunca divida um CNJ entre outros campos.
+    "0600216-46.2020.6.14.0022"          → "06002164620206140022"
+    "ARR-471-22.2011.5.03.0044"          → "00004712220115030044"
+    "TST-RR-79500-16.2009.5.15.0016"     → "00795001620095150016"
+- numero_classe_tribunal: o número sequencial que acompanha a sigla da classe nas numerações
+  próprias de STF e STJ, somente dígitos. "REsp 1.741.784" → "1741784"; "Rcl 68.244" → "68244".
+- numero_registro_tribunal: o registro interno no formato AAAA/NNNNNNN-D, somente dígitos.
+  "2018/0116304-1" → "201801163041". Raro; só preencha se o trecho trouxer esse formato.
+- classe_processual: a classe do processo-base, isto é, a última da cadeia. Em
+  "AgInt no REsp", é REsp; em "EDcl no AgRg no AREsp", é AREsp. Use os valores da lista.
+- cadeia_recursal: todas as classes citadas, sem ordem e sem repetição.
+- tribunal: apenas se a sigla ou o nome do tribunal estiver escrito no trecho.
+- uf: a sigla de duas letras do estado que acompanha o número. O separador varia e deve
+  ser ignorado: "/PR", "- PR", "–CE", "(MA)" resultam em "PR", "CE", "MA". Sem sigla de
+  estado no trecho, deixe nulo. Atenção: em "TST-RR-...", RR é a classe Recurso de
+  Revista, não Roraima.
+- ano: só o ano do julgamento quando escrito ("de 2021", "julgado em 2020"). Não use o ano
+  que está dentro do CNJ.
+- relator: o nome como aparece, sem "Rel.", "Min." ou "Ministro".
+- numero_sumula e sumula_vinculante: preencha para súmulas; sumula_vinculante é true
+  apenas para "Súmula Vinculante" do STF.
+
+NÚMEROS COM RUÍDO
+O trecho pode vir de OCR, com quebras de linha e pontuação irregular no meio do número.
+Junte os pedaços de um mesmo número separados por quebra de linha, hífen duplo ou ponto solto,
+sem inventar dígitos:
+    "0600216-46.2020-\n.6.14.0022"  → CNJ "06002164620206140022"
+    "TST-AgRR-25823-78.2015.5.24.\n0091" → CNJ "00258237820155240091"
+    "n. 2785 (SP)"                  → numero_classe_tribunal "2785", uf "SP"
+Letras no lugar de dígitos são erro de OCR, converta: g→9, l e I→1, O→0, S→5, B→8, Z→2.
+    "1.45g.779"  → "1459779"        "l.741.784" → "1741784"
+
+SÚMULAS
+    "Súmula Vinculante 10"  → natureza "sumula", numero_sumula 10, sumula_vinculante true, tribunal "STF"
+    "Súmula 331 do TST"     → natureza "sumula", numero_sumula 331, sumula_vinculante false, tribunal "TST"
+    "5úmula 211 do STJ"     → natureza "sumula", numero_sumula 211, sumula_vinculante false, tribunal "STJ"
+
+REFERÊNCIAS SEM NÚMERO
+Citações como "acórdão do STJ julgado em 2021 sob relatoria de Assusete Magalhães" ou
+"Rcl de 2021, Rel. Min. Rosa Weber" não têm número: preencha tribunal, ano, relator e classe
+quando escritos, e deixe todos os campos numéricos nulos.
 
 Exemplo completo — a classe principal é o recurso-base, não o recurso incidental mais externo:
 
@@ -84,10 +140,38 @@ class ErroExtracaoEntidades(RuntimeError):
         self.auditorias = auditorias
 
 
-_PROMPT_LEI = """Extraia os campos de identificação desta citação de legislação
-brasileira.
+_PROMPT_LEI = """CONTEXTO
+Você é a terceira etapa de um pipeline de verificação de citações jurídicas. As etapas
+anteriores já localizaram o trecho no documento e decidiram que ele é uma citação de
+legislação. Sua tarefa é transformar o trecho em campos estruturados. A etapa seguinte
+não usa modelo: ela monta uma consulta SQL exata com os campos que você devolver e
+compara com uma base de dispositivos de lei. Se um campo vier errado, a consulta não
+encontra o registro e uma citação verdadeira é marcada como inventada.
 
-Preencha somente dados explícitos ou decorrentes de abreviações jurídicas inequívocas.
+TAREFA
+Extraia os campos de identificação desta citação de legislação brasileira.
+Preencha somente dados explícitos no trecho ou decorrentes de siglas e nomes de
+diplomas inequívocos. Campos ausentes ficam nulos. Não corrija nem avalie a citação:
+um artigo inexistente deve ser extraído do mesmo jeito.
+
+CAMPOS
+- numero_artigo: só o número do artigo, sem "art.", sem ordinal e sem inciso, parágrafo
+  ou alínea. "art. 93, IX" → "93". "artigo 5º, LV" → "5". "§ 2º do art. 14" → "14".
+- diploma: o nome canônico da lista permitida. Reconheça as variantes:
+  "Constituição da República", "Constituição Federal", "CF/88", "CRFB", "Carta Magna"
+  → CF — Constituição Federal.
+  "Código de Processo Civil", "CPC", "Lei nº 13.105/2015" → CPC — Código de Processo Civil.
+  "Consolidação das Leis do Trabalho", "CLT", "Decreto-Lei nº 5.452/1943" → CLT.
+  "Código Eleitoral", "Lei nº 4.737/1965" → CE — Código Eleitoral.
+  "Lei Complementar nº 64/1990" → LC — Lei Complementar.
+  Use "Lei" apenas quando o trecho traz um número de lei que não corresponde a nenhum
+  dos códigos da lista.
+- numero_diploma: o número da norma, somente dígitos, NUNCA o ano.
+  "Lei nº 13.105/2015" → "13105". "Lei Complementar nº 64/1990" → "64".
+  Quando o trecho cita um código pelo nome, informe o número da lei que o instituiu:
+  CPC → "13105"; CC → "10406"; CDC → "8078"; CPP → "3689"; CPM → "1001";
+  CE → "4737"; CLT → "5452".
+  A Constituição Federal não tem número: numero_diploma nulo. Nunca escreva "1988".
 
 Exemplo completo — não use `Lei` como fallback quando o trecho identifica um diploma específico:
 
