@@ -3,61 +3,71 @@ import json
 import sqlite3
 import tempfile
 import unittest
+from importlib import import_module
 from pathlib import Path
+from unittest.mock import Mock
 
+from openai import OpenAI
 from pydantic import ValidationError
 
-from desafio_jusbrasil.completeness import (
-    AgenteCompletude,
-    executar_completude,
-    executar_completude_async,
-)
 from desafio_jusbrasil.contracts import (
-    AuditoriaChamadaModelo,
     CandidatoAnalisado,
     CandidatoCitacao,
     CandidatoCitacaoRequest,
     Classificacao,
     ConsultaJurisprudencia,
+    ConsultaJurisprudenciaAgente,
     ConsultaLegislacao,
+    ConsultaLegislacaoAgente,
     DocumentoCompletude,
     DocumentoExtraido,
     DocumentoPredito,
+    LoteCandidatosRequest,
     ResultadoCompletude,
     ResultadoVeracidade,
     StageConfig,
     TipoCitacao,
-    escrever_manifesto_etapa,
-)
-from desafio_jusbrasil.extractor import (
-    AgenteExtrator,
-    executar_extracao,
-    executar_extracao_async,
 )
 from desafio_jusbrasil.orchestrator import Orquestrador
-from desafio_jusbrasil.veracity import (
-    VerificadorVeracidade,
-    _prompt_veracidade,
-    executar_veracidade,
-    executar_veracidade_async,
+from desafio_jusbrasil.utils import (
+    escrever_manifesto_etapa,
+    escrever_saida_documento,
+    normalizar_numero_cnj,
 )
 
+_extractor = import_module("desafio_jusbrasil.1_extractor")
+_completeness = import_module("desafio_jusbrasil.2_completeness")
+_entities = import_module("desafio_jusbrasil.3_entities")
+_veracity = import_module("desafio_jusbrasil.4_veracity")
+AgenteExtrator = _extractor.AgenteExtrator
+executar_extracao = _extractor.executar_extracao
+executar_extracao_async = _extractor.executar_extracao_async
+AgenteCompletude = _completeness.AgenteCompletude
+executar_completude = _completeness.executar_completude
+executar_completude_async = _completeness.executar_completude_async
+AgenteExtratorEntidades = _entities.AgenteExtratorEntidades
+_prompt_veracidade = _entities._prompt_veracidade
+executar_entities_async = _entities.executar_entities_async
+VerificadorVeracidade = _veracity.VerificadorVeracidade
+executar_veracidade = _veracity.executar_veracidade
 
-def _auditoria_fake() -> AuditoriaChamadaModelo:
-    return AuditoriaChamadaModelo(input={"messages": []}, output={"choices": []})
+
+def _auditoria_fake() -> dict:
+    return {"input": {"messages": []}, "output": {"choices": []}}
 
 
 class ExtratorFake:
     def extrair_auditada(
         self,
         texto: str,
-    ) -> tuple[list[CandidatoCitacao], AuditoriaChamadaModelo]:
+    ) -> tuple[list[CandidatoCitacao], dict]:
         trecho = "art. 373 do CPC"
         inicio = texto.index(trecho)
         return [
             CandidatoCitacao(
                 tipo=TipoCitacao.LEI,
                 trecho=trecho,
+                confianca_extracao=0.75,
                 inicio=inicio,
                 fim=inicio + len(trecho),
             )
@@ -68,7 +78,7 @@ class ExtratorAsyncFake:
     async def extrair_auditada_async(
         self,
         texto: str,
-    ) -> tuple[list[CandidatoCitacao], AuditoriaChamadaModelo]:
+    ) -> tuple[list[CandidatoCitacao], dict]:
         return ExtratorFake().extrair_auditada(texto)
 
 
@@ -77,8 +87,8 @@ class CompletudeFake:
         self,
         candidato: CandidatoCitacao,
         contexto: str,
-    ) -> tuple[ResultadoCompletude, AuditoriaChamadaModelo]:
-        return ResultadoCompletude(completa=True), _auditoria_fake()
+    ) -> tuple[ResultadoCompletude, list[dict]]:
+        return ResultadoCompletude(completa=True), [_auditoria_fake()]
 
 
 class CompletudeAsyncFake:
@@ -86,7 +96,7 @@ class CompletudeAsyncFake:
         self,
         candidato: CandidatoCitacao,
         contexto: str,
-    ) -> tuple[ResultadoCompletude, AuditoriaChamadaModelo]:
+    ) -> tuple[ResultadoCompletude, list[dict]]:
         return CompletudeFake().classificar_auditada(candidato, contexto)
 
 
@@ -95,48 +105,102 @@ class CompletudeAsyncComFalha(CompletudeAsyncFake):
         self,
         candidato: CandidatoCitacao,
         contexto: str,
-    ) -> tuple[ResultadoCompletude, AuditoriaChamadaModelo]:
+    ) -> tuple[ResultadoCompletude, list[dict]]:
         if candidato.trecho == "falha":
             await asyncio.sleep(0.01)
             raise RuntimeError("falha simulada")
         return await super().classificar_auditada_async(candidato, contexto)
 
 
-class VeracidadeFake:
-    def classificar_auditada(
+class EntidadesAsyncFake:
+    def __init__(self) -> None:
+        self.chamadas = 0
+
+    async def extrair_auditada_async(
         self,
         candidato: CandidatoCitacao,
-    ) -> tuple[ResultadoVeracidade, AuditoriaChamadaModelo]:
-        return ResultadoVeracidade(
-            classificacao=Classificacao.REAL,
-            id_canonico=28893055,
-            justificativa="registro único",
-        ), _auditoria_fake()
+    ) -> tuple[ConsultaJurisprudencia | ConsultaLegislacao, dict]:
+        self.chamadas += 1
+        if candidato.tipo == TipoCitacao.LEI:
+            campos = ConsultaLegislacao(
+                numero_artigo="373",
+                diploma="Código de Processo Civil",
+            )
+        else:
+            campos = ConsultaJurisprudencia(
+                natureza="acordao",
+                numero_classe_tribunal="123",
+            )
+        return campos, _auditoria_fake()
 
 
-class VeracidadeAsyncFake:
-    async def classificar_auditada_async(
+class EntidadesAsyncComFalha(EntidadesAsyncFake):
+    async def extrair_auditada_async(
         self,
         candidato: CandidatoCitacao,
-    ) -> tuple[ResultadoVeracidade, AuditoriaChamadaModelo]:
-        return VeracidadeFake().classificar_auditada(candidato)
-
-
-class VeracidadeAsyncComFalha(VeracidadeAsyncFake):
-    async def classificar_auditada_async(
-        self,
-        candidato: CandidatoCitacao,
-    ) -> tuple[ResultadoVeracidade, AuditoriaChamadaModelo]:
+    ) -> tuple[ConsultaJurisprudencia | ConsultaLegislacao, dict]:
         if candidato.trecho == "falha":
             await asyncio.sleep(0.01)
             raise RuntimeError("falha simulada")
-        return await super().classificar_auditada_async(candidato)
+        return await super().extrair_auditada_async(candidato)
+
+
+class VerificadorFake:
+    def verificar(
+        self,
+        consulta: ConsultaJurisprudencia | ConsultaLegislacao,
+    ) -> tuple[ResultadoVeracidade, dict]:
+        resultado = ResultadoVeracidade(
+            classificacao=Classificacao.REAL,
+            id_canonico=28893055,
+            justificativa="registro único",
+        )
+        return resultado, {
+            "campos_extraidos": consulta.model_dump(mode="json"),
+            "sql": "SELECT 1",
+            "parametros": [],
+            "registros": [{"id": 28893055}],
+            "resultado": resultado.model_dump(mode="json"),
+        }
 
 
 class PipelineTest(unittest.TestCase):
     def test_llm_nao_recebe_campos_de_span(self) -> None:
         self.assertNotIn("inicio", CandidatoCitacaoRequest.model_fields)
         self.assertNotIn("fim", CandidatoCitacaoRequest.model_fields)
+
+    def test_extracao_repete_resposta_invalida(self) -> None:
+        payload_invalido = {
+            "candidatos": [{"trecho": "Rcl 44.960/PE", "type": "jurisprudencia"}]
+        }
+        with self.assertRaises(ValidationError) as contexto:
+            LoteCandidatosRequest.model_validate(payload_invalido)
+
+        lote = LoteCandidatosRequest(
+            candidatos=[
+                CandidatoCitacaoRequest(
+                    trecho="Rcl 44.960/PE",
+                    tipo=TipoCitacao.JURISPRUDENCIA,
+                )
+            ]
+        )
+        resposta = Mock()
+        resposta.choices = [Mock(message=Mock(parsed=lote))]
+        resposta.model_dump.return_value = {"choices": []}
+        cliente = Mock(spec=OpenAI)
+        cliente.chat.completions.parse.side_effect = [contexto.exception, resposta]
+
+        with self.assertLogs("desafio_jusbrasil.1_extractor", level="WARNING") as logs:
+            candidatos, auditoria = AgenteExtrator(
+                cliente, StageConfig(model="modelo")
+            )._consultar_modelo("Rcl 44.960/PE")
+
+        self.assertEqual(cliente.chat.completions.parse.call_count, 2)
+        self.assertEqual(candidatos, lote.candidatos)
+        self.assertEqual(len(logs.output), 1)
+        self.assertIn("retry 1/4", logs.output[0])
+        self.assertEqual(auditoria["campos_extraidos"][0]["tipo"], "jurisprudencia")
+        self.assertEqual(list(auditoria)[-2:], ["input", "output"])
 
     def test_spans_sao_calculados_localmente(self) -> None:
         texto = "art. 373 do CPC e art. 373 do CPC"
@@ -215,26 +279,40 @@ class PipelineTest(unittest.TestCase):
         self.assertEqual(sem_debug._processar_candidatos("documento", [pedido]), [])
         self.assertEqual(len(com_debug._processar_candidatos("documento", [pedido])), 1)
 
-    def test_checkpoint_inclui_input_e_output_do_modelo(self) -> None:
+    def test_checkpoint_nao_inclui_chamadas_do_modelo(self) -> None:
         documento = DocumentoExtraido(
             documento_id="doc",
             candidatos=[],
             texto="texto",
-            chamadas_modelo=[
-                AuditoriaChamadaModelo(
-                    input={"messages": [{"role": "user", "content": "texto"}]},
-                    output={"choices": []},
-                )
-            ],
         )
         serializado = documento.model_dump(mode="json")
-        self.assertEqual(
-            serializado["chamadas_modelo"][0],
-            {
-                "input": {"messages": [{"role": "user", "content": "texto"}]},
-                "output": {"choices": []},
-            },
-        )
+        self.assertNotIn("chamadas_modelo", serializado)
+        self.assertNotIn("texto", serializado)
+
+    def test_saida_separa_resultado_de_cada_chamada(self) -> None:
+        with tempfile.TemporaryDirectory() as temporario:
+            destino = Path(temporario)
+            documento = DocumentoExtraido(
+                documento_id="doc",
+                candidatos=[],
+                texto="texto",
+            )
+            chamadas = [_auditoria_fake(), _auditoria_fake()]
+
+            escrever_saida_documento(destino, documento, chamadas)
+
+            pasta = destino / "doc"
+            self.assertEqual(
+                sorted(arquivo.name for arquivo in pasta.glob("*.json")),
+                ["0001.json", "0002.json", "resultado.json"],
+            )
+            resultado = json.loads((pasta / "resultado.json").read_text())
+            self.assertNotIn("chamadas_modelo", resultado)
+            self.assertNotIn("texto", resultado)
+            self.assertEqual(
+                json.loads((pasta / "0001.json").read_text()),
+                _auditoria_fake(),
+            )
 
     def test_manifesto_registra_configuracao_da_etapa(self) -> None:
         with tempfile.TemporaryDirectory() as temporario:
@@ -287,17 +365,143 @@ class PipelineTest(unittest.TestCase):
             trecho="Súmula 331 do TST",
             tipo=TipoCitacao.JURISPRUDENCIA,
         )
-        mensagens = VerificadorVeracidade._mensagens(candidato)
+        mensagens = AgenteExtratorEntidades._mensagens(candidato)
         self.assertIn(candidato.trecho, mensagens[1]["content"])
+        self.assertIn(
+            "EDcl no AgInt no Agravo em Recurso Especial", mensagens[0]["content"]
+        )
+        self.assertIn(
+            '"classe_processual": "AREsp — Agravo em Recurso Especial"',
+            mensagens[0]["content"],
+        )
+        prompt_lei = AgenteExtratorEntidades._mensagens(
+            CandidatoCitacao(
+                trecho="art. 1.134 da Lei nº 13.105/2015", tipo=TipoCitacao.LEI
+            )
+        )[0]["content"]
+        self.assertIn("CPC — Código de Processo Civil", prompt_lei)
+        schema_jurisprudencia = ConsultaJurisprudencia.model_json_schema()["properties"]
+        self.assertEqual(
+            schema_jurisprudencia["numero_classe_tribunal"]["examples"],
+            ["68244", "1741784"],
+        )
+        self.assertEqual(
+            schema_jurisprudencia["numero_registro_tribunal"]["examples"],
+            ["202201873194", "201801163041"],
+        )
         self.assertNotEqual(
             _prompt_veracidade(TipoCitacao.JURISPRUDENCIA),
             _prompt_veracidade(TipoCitacao.LEI),
         )
         self.assertEqual(
             set(ConsultaJurisprudencia.model_fields),
-            {"valores_fts", "natureza", "tribunal", "ano", "relator"},
+            {
+                "natureza",
+                "numero_processo_cnj",
+                "numero_classe_tribunal",
+                "numero_registro_tribunal",
+                "classe_processual",
+                "cadeia_recursal",
+                "tribunal",
+                "uf",
+                "ano",
+                "relator",
+                "relator_norm",
+                "numero_sumula",
+                "sumula_vinculante",
+            },
         )
-        self.assertEqual(set(ConsultaLegislacao.model_fields), {"valores_fts"})
+        self.assertEqual(
+            set(ConsultaLegislacao.model_fields),
+            {
+                "numero_artigo",
+                "diploma",
+                "numero_diploma",
+            },
+        )
+        self.assertTrue(
+            all(
+                not campo.is_required()
+                for contrato in (ConsultaJurisprudencia, ConsultaLegislacao)
+                for campo in contrato.model_fields.values()
+            )
+        )
+        self.assertEqual(
+            ConsultaJurisprudencia(
+                cadeia_recursal=["REsp", "AgInt", "REsp"]
+            ).cadeia_recursal,
+            ["REsp", "AgInt"],
+        )
+        self.assertIsNone(ConsultaJurisprudencia(cadeia_recursal=[]).cadeia_recursal)
+        classe_agente = ConsultaJurisprudenciaAgente.model_json_schema()["properties"][
+            "classe_processual"
+        ]["anyOf"][0]["enum"]
+        self.assertIn("Rcl — Reclamação", classe_agente)
+        self.assertIsNone(
+            ConsultaJurisprudencia(
+                numero_processo_cnj="00003788220166050151", ano=2016
+            ).ano
+        )
+        self.assertEqual(
+            ConsultaJurisprudencia(
+                classe_processual="Rcl — Reclamação",
+                cadeia_recursal=[
+                    "AgInt — Agravo Interno",
+                    "Rcl — Reclamação",
+                ],
+            ).model_dump(include={"classe_processual", "cadeia_recursal"}),
+            {
+                "classe_processual": "Rcl",
+                "cadeia_recursal": ["AgInt", "Rcl"],
+            },
+        )
+        self.assertEqual(
+            ConsultaLegislacao(numero_artigo="Art. 1.105").numero_artigo,
+            "1105",
+        )
+        self.assertEqual(
+            ConsultaLegislacao(numero_diploma="Lei nº 13.105").numero_diploma,
+            "13105",
+        )
+        diplomas_agente = ConsultaLegislacaoAgente.model_json_schema()["properties"][
+            "diploma"
+        ]["anyOf"][0]["enum"]
+        self.assertIn("CLT — Consolidação das Leis do Trabalho", diplomas_agente)
+        self.assertEqual(
+            ConsultaLegislacao(
+                diploma="CLT — Consolidação das Leis do Trabalho"
+            ).diploma,
+            "Consolidação das Leis do Trabalho",
+        )
+        self.assertEqual(
+            ConsultaJurisprudencia(
+                numero_classe_tribunal="Rcl 68.244",
+                numero_registro_tribunal="2022/0187319-4",
+            ).model_dump(
+                include={"numero_classe_tribunal", "numero_registro_tribunal"}
+            ),
+            {
+                "numero_classe_tribunal": "68244",
+                "numero_registro_tribunal": "202201873194",
+            },
+        )
+
+    def test_identificadores_do_agente_sao_normalizados_no_contrato(self) -> None:
+        consulta = ConsultaJurisprudenciaAgente(
+            numero_classe_tribunal="Rcl 55.626",
+            numero_registro_tribunal="2022/0187319-4",
+        )
+        self.assertEqual(consulta.numero_classe_tribunal, "55626")
+        self.assertEqual(consulta.numero_registro_tribunal, "202201873194")
+
+    def test_numero_cnj_recupera_zeros_do_trecho(self) -> None:
+        self.assertEqual(
+            normalizar_numero_cnj(
+                "3788220166050151",
+                "REspe nº 378-82.2016.6.05.0151",
+            ),
+            "00003788220166050151",
+        )
 
     def test_veracidade_monta_uma_consulta_fts_parametrizada(self) -> None:
         with tempfile.TemporaryDirectory() as temporario:
@@ -321,7 +525,7 @@ class PipelineTest(unittest.TestCase):
                     );
                     INSERT INTO documentos VALUES (
                         'doc_1', 42, 'STJ', 2023, 'Maria Silva', 'acordao',
-                        'jurisprudencia', 'Agravo em Recurso Especial 1 996 496 RJ', 44
+                        'jurisprudencia', 'AgInt no Agravo em Recurso Especial 1 996 496 RJ', 53
                     );
                     INSERT INTO documentos_fts(documentos_fts) VALUES ('rebuild');
                     """
@@ -330,20 +534,113 @@ class PipelineTest(unittest.TestCase):
             verificador = object.__new__(VerificadorVeracidade)
             verificador._database = banco
             consulta = ConsultaJurisprudencia(
-                valores_fts=["1 996 496", "RJ"],
                 natureza="acordao",
+                numero_classe_tribunal="1996496",
+                classe_processual="AREsp",
+                cadeia_recursal=["AgInt", "AREsp"],
                 tribunal="STJ",
+                uf="RJ",
                 ano=2023,
                 relator="Maria Silva",
             )
             registros, sql, parametros = verificador._consultar_base(consulta)
             self.assertEqual(registros, [{"id": 42, "documento_id": "doc_1"}])
-            self.assertEqual(parametros[0], '"1 996 496" AND "RJ"')
-            self.assertIn("d.tribunal = ?", sql)
+            self.assertEqual(
+                parametros[0],
+                'NEAR("AgInt" "AGRAVO EM RECURSO ESPECIAL" "1 996 496", 20)',
+            )
+            self.assertNotIn("d.tribunal = ?", sql)
             self.assertEqual(
                 verificador._classificar(registros).classificacao,
                 Classificacao.REAL,
             )
+
+    def test_veracidade_prioriza_colunas_estruturadas(self) -> None:
+        with tempfile.TemporaryDirectory() as temporario:
+            banco = Path(temporario) / "base.db"
+            with sqlite3.connect(banco) as conexao:
+                conexao.executescript(
+                    """
+                    CREATE TABLE documentos (
+                        documento_id TEXT PRIMARY KEY, id INTEGER UNIQUE,
+                        natureza TEXT, tipo TEXT, texto TEXT,
+                        numero_processo_cnj TEXT, numero_sumula INTEGER,
+                        sumula_vinculante INTEGER, numero_artigo TEXT,
+                        numero_diploma TEXT, diploma TEXT, ano_diploma INTEGER
+                    );
+                    CREATE VIRTUAL TABLE documentos_fts USING fts5(
+                        texto, content='documentos', content_rowid='rowid'
+                    );
+                    INSERT INTO documentos VALUES (
+                        'doc_1', 42, 'acordao', 'jurisprudencia', 'texto sem número',
+                        '00003788220166050151', NULL, NULL, NULL, NULL, NULL, NULL
+                    );
+                    INSERT INTO documentos_fts(documentos_fts) VALUES ('rebuild');
+                    """
+                )
+            verificador = VerificadorVeracidade(banco)
+            registros, sql, parametros = verificador._consultar_base(
+                ConsultaJurisprudencia(
+                    natureza="acordao",
+                    numero_processo_cnj="00003788220166050151",
+                )
+            )
+            self.assertEqual(registros, [{"id": 42, "documento_id": "doc_1"}])
+            self.assertIn("numero_processo_cnj = ?", sql)
+            self.assertEqual(parametros, ["00003788220166050151"])
+
+    def test_veracidade_busca_classe_e_registro_nas_duas_colunas(self) -> None:
+        colunas = {"numero_classe_tribunal", "numero_registro_tribunal"}
+        for consulta in (
+            ConsultaJurisprudencia(numero_classe_tribunal="68244"),
+            ConsultaJurisprudencia(numero_registro_tribunal="68244"),
+        ):
+            sql, parametros = VerificadorVeracidade._consulta_estruturada(
+                consulta, colunas
+            )
+            self.assertIn("numero_classe_tribunal IN (?)", sql)
+            self.assertIn("numero_registro_tribunal IN (?)", sql)
+            self.assertEqual(parametros, ["68244", "68244"])
+
+    def test_veracidade_sem_identificador_retorna_incompleta(self) -> None:
+        verificador = object.__new__(VerificadorVeracidade)
+
+        resultado, verificacao = verificador.verificar(ConsultaJurisprudencia())
+
+        self.assertEqual(resultado.classificacao, Classificacao.INCOMPLETA)
+        self.assertIsNone(verificacao["sql"])
+        self.assertEqual(verificacao["parametros"], [])
+        self.assertEqual(verificacao["registros"], [])
+
+    def test_veracidade_deriva_termos_dos_campos_juridicos(self) -> None:
+        self.assertEqual(
+            VerificadorVeracidade._valores_fts(
+                ConsultaJurisprudencia(
+                    natureza="sumula",
+                    numero_sumula=10,
+                    sumula_vinculante=True,
+                )
+            ),
+            ["sumula", "vinculante", "10"],
+        )
+        self.assertEqual(
+            VerificadorVeracidade._valores_fts(
+                ConsultaLegislacao(
+                    numero_artigo="373",
+                    diploma="Código de Processo Civil",
+                    numero_diploma="13.105",
+                )
+            ),
+            ["Artigo 373", "13 105"],
+        )
+        self.assertEqual(
+            VerificadorVeracidade._normalizar_numero("AgInt no REsp 21737l8-SP"),
+            "2 173 718",
+        )
+        self.assertEqual(
+            VerificadorVeracidade._normalizar_numero("7000553-0320217000000"),
+            "7000553 03 2021 7 00 0000",
+        )
 
     def test_real_exige_id_canonico(self) -> None:
         with self.assertRaises(ValidationError):
@@ -362,23 +659,33 @@ class PipelineTest(unittest.TestCase):
 
             extracao = raiz / "01-extraction"
             completude = raiz / "02-completeness"
-            veracidade = raiz / "03-veracity"
+            entities = raiz / "03-entities"
+            veracidade = raiz / "04-veracity"
 
             executar_extracao(entrada, extracao, ExtratorFake())
             (extracao / "manifest.json").write_text("{}", encoding="utf-8")
-            executar_completude(extracao, completude, CompletudeFake())
+            executar_completude(extracao, completude, CompletudeFake(), entrada)
             (completude / "manifest.json").write_text("{}", encoding="utf-8")
-            executar_veracidade(completude, veracidade, VeracidadeFake())
+            asyncio.run(
+                executar_entities_async(
+                    completude,
+                    entities,
+                    EntidadesAsyncFake(),
+                    max_concurrency=2,
+                )
+            )
+            executar_veracidade(entities, veracidade, VerificadorFake())
 
             resultado = json.loads(
-                (veracidade / "doc_001.json").read_text(encoding="utf-8")
+                (veracidade / "doc_001" / "resultado.json").read_text(encoding="utf-8")
             )
             self.assertEqual(resultado["documento_id"], "doc_001")
             self.assertEqual(
                 resultado["candidatos"][0]["veracidade"]["classificacao"],
                 "real",
             )
-            self.assertEqual(len(resultado["chamadas_modelo"]), 1)
+            self.assertNotIn("chamadas_modelo", resultado)
+            self.assertTrue((veracidade / "doc_001" / "0001.json").exists())
 
     def test_extracao_async_preserva_ordem_dos_documentos(self) -> None:
         with tempfile.TemporaryDirectory() as temporario:
@@ -403,7 +710,7 @@ class PipelineTest(unittest.TestCase):
 
             ids = [
                 json.loads(arquivo.read_text())["documento_id"]
-                for arquivo in sorted(destino.glob("*.json"))
+                for arquivo in sorted(destino.glob("*/resultado.json"))
             ]
             self.assertEqual(ids, ["a", "b"])
 
@@ -411,9 +718,12 @@ class PipelineTest(unittest.TestCase):
         with tempfile.TemporaryDirectory() as temporario:
             raiz = Path(temporario)
             entrada = raiz / "entrada"
+            textos = raiz / "txt"
             saida = raiz / "saida"
             entrada.mkdir()
+            textos.mkdir()
             for documento_id, texto in (("a", "art. 373 do CPC"), ("b", "falha")):
+                (textos / f"{documento_id}.txt").write_text(texto, encoding="utf-8")
                 documento = DocumentoExtraido(
                     documento_id=documento_id,
                     texto=texto,
@@ -438,13 +748,94 @@ class PipelineTest(unittest.TestCase):
                         saida,
                         CompletudeAsyncComFalha(),
                         max_concurrency=2,
+                        input_dir=textos,
                     )
                 )
 
-            self.assertTrue((saida / "a.json").exists())
-            self.assertFalse((saida / "b.json").exists())
+            self.assertTrue((saida / "a" / "resultado.json").exists())
+            self.assertFalse((saida / "b" / "resultado.json").exists())
 
-    def test_veracidade_async_salva_documento_antes_de_falha_posterior(self) -> None:
+    def test_entities_extrai_campos_parciais_de_citacao_incompleta(self) -> None:
+        with tempfile.TemporaryDirectory() as temporario:
+            raiz = Path(temporario)
+            entrada, saida = raiz / "entrada", raiz / "saida"
+            entrada.mkdir()
+            candidato = CandidatoCitacao(
+                trecho="art. 373 do CPC",
+                tipo=TipoCitacao.LEI,
+                inicio=0,
+                fim=15,
+            )
+            documento = DocumentoCompletude(
+                documento_id="doc",
+                candidatos=[
+                    CandidatoAnalisado(
+                        candidato=candidato,
+                        completude=ResultadoCompletude(completa=False),
+                    )
+                ],
+            )
+            (entrada / "doc.json").write_text(
+                documento.model_dump_json(), encoding="utf-8"
+            )
+
+            asyncio.run(
+                executar_entities_async(
+                    entrada,
+                    saida,
+                    EntidadesAsyncFake(),
+                    max_concurrency=1,
+                )
+            )
+
+            resultado = json.loads(
+                (saida / "doc" / "resultado.json").read_text(encoding="utf-8")
+            )
+            self.assertFalse(resultado["candidatos"][0]["completude"]["completa"])
+            self.assertEqual(
+                resultado["candidatos"][0]["campos_extraidos"]["numero_artigo"],
+                "373",
+            )
+            self.assertTrue((saida / "doc" / "0001.json").is_file())
+
+    def test_entities_reprocessa_documentos_ja_existentes(self) -> None:
+        with tempfile.TemporaryDirectory() as temporario:
+            raiz = Path(temporario)
+            entrada, saida = raiz / "entrada", raiz / "saida"
+            entrada.mkdir()
+            candidato = CandidatoCitacao(
+                trecho="art. 373 do CPC",
+                tipo=TipoCitacao.LEI,
+                inicio=0,
+                fim=15,
+            )
+            documento = DocumentoCompletude(
+                documento_id="doc",
+                candidatos=[
+                    CandidatoAnalisado(
+                        candidato=candidato,
+                        completude=ResultadoCompletude(completa=True),
+                    )
+                ],
+            )
+            (entrada / "doc.json").write_text(
+                documento.model_dump_json(), encoding="utf-8"
+            )
+            extrator = EntidadesAsyncFake()
+
+            for _ in range(2):
+                asyncio.run(
+                    executar_entities_async(
+                        entrada,
+                        saida,
+                        extrator,
+                        max_concurrency=1,
+                    )
+                )
+
+            self.assertEqual(extrator.chamadas, 2)
+
+    def test_entities_async_salva_documento_antes_de_falha_posterior(self) -> None:
         with tempfile.TemporaryDirectory() as temporario:
             raiz = Path(temporario)
             entrada = raiz / "entrada"
@@ -474,18 +865,57 @@ class PipelineTest(unittest.TestCase):
 
             with self.assertRaisesRegex(RuntimeError, "falha simulada"):
                 asyncio.run(
-                    executar_veracidade_async(
+                    executar_entities_async(
                         entrada,
                         saida,
-                        VeracidadeAsyncComFalha(),
+                        EntidadesAsyncComFalha(),
                         max_concurrency=2,
                     )
                 )
 
-            self.assertTrue((saida / "a.json").exists())
-            self.assertFalse((saida / "b.json").exists())
+            self.assertTrue((saida / "a" / "resultado.json").exists())
+            self.assertFalse((saida / "b" / "resultado.json").exists())
 
-    def test_completude_e_veracidade_async(self) -> None:
+    def test_entities_salva_citacao_antes_de_falha_posterior_no_documento(self) -> None:
+        with tempfile.TemporaryDirectory() as temporario:
+            raiz = Path(temporario)
+            entrada = raiz / "entrada"
+            saida = raiz / "saida"
+            entrada.mkdir()
+            candidatos = [
+                CandidatoAnalisado(
+                    candidato=CandidatoCitacao(
+                        trecho=texto,
+                        tipo=TipoCitacao.LEI,
+                        inicio=inicio,
+                        fim=inicio + len(texto),
+                    ),
+                    completude=ResultadoCompletude(completa=True),
+                )
+                for texto, inicio in (("art. 373 do CPC", 0), ("falha", 20))
+            ]
+            documento = DocumentoCompletude(
+                documento_id="doc", texto="", candidatos=candidatos
+            )
+            (entrada / "doc.json").write_text(
+                documento.model_dump_json(), encoding="utf-8"
+            )
+
+            with self.assertRaisesRegex(RuntimeError, "falha simulada"):
+                asyncio.run(
+                    executar_entities_async(
+                        entrada,
+                        saida,
+                        EntidadesAsyncComFalha(),
+                        max_concurrency=1,
+                    )
+                )
+
+            resultado = json.loads((saida / "doc" / "resultado.json").read_text())
+            self.assertEqual(len(resultado["candidatos"]), 1)
+            self.assertTrue((saida / "doc" / "0001.json").exists())
+
+    def test_completude_entities_e_veracidade(self) -> None:
         with tempfile.TemporaryDirectory() as temporario:
             raiz = Path(temporario)
             entrada = raiz / "txt"
@@ -496,7 +926,8 @@ class PipelineTest(unittest.TestCase):
             )
             extracao = raiz / "01"
             completude = raiz / "02"
-            veracidade = raiz / "03"
+            entities = raiz / "03"
+            veracidade = raiz / "04"
             executar_extracao(entrada, extracao, ExtratorFake())
             asyncio.run(
                 executar_completude_async(
@@ -504,18 +935,20 @@ class PipelineTest(unittest.TestCase):
                     completude,
                     CompletudeAsyncFake(),
                     max_concurrency=2,
+                    input_dir=entrada,
                 )
             )
             asyncio.run(
-                executar_veracidade_async(
+                executar_entities_async(
                     completude,
-                    veracidade,
-                    VeracidadeAsyncFake(),
+                    entities,
+                    EntidadesAsyncFake(),
                     max_concurrency=2,
                 )
             )
+            executar_veracidade(entities, veracidade, VerificadorFake())
             resultado = json.loads(
-                (veracidade / "doc.json").read_text(encoding="utf-8")
+                (veracidade / "doc" / "resultado.json").read_text(encoding="utf-8")
             )
             self.assertEqual(
                 resultado["candidatos"][0]["veracidade"]["classificacao"],
@@ -534,9 +967,10 @@ class PipelineTest(unittest.TestCase):
             orquestrador = Orquestrador(
                 ExtratorFake(),
                 CompletudeFake(),
-                VeracidadeFake(),
+                EntidadesAsyncFake(),
+                VerificadorFake(),
             )
-            orquestrador.executar(entrada, raiz / "run")
+            asyncio.run(orquestrador.executar(entrada, raiz / "run"))
 
             destino = raiz / "run" / "predictions" / "doc_001.json"
             documento = DocumentoPredito.model_validate_json(
@@ -544,6 +978,7 @@ class PipelineTest(unittest.TestCase):
             )
             self.assertEqual(documento.citacoes[0].classificacao, Classificacao.REAL)
             self.assertEqual(documento.citacoes[0].resolucao.id_canonico, 28893055)
+            self.assertEqual(documento.citacoes[0].confianca, 0.75)
 
 
 if __name__ == "__main__":

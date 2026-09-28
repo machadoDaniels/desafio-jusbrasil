@@ -1,0 +1,58 @@
+input_dir: desafio-jusbrasil-bracis-2026/txt
+workdir: outputs/run-008-gemini
+database: data/desafio1_bracis_enriched.db
+
+database_preprocessing:
+  input: desafio-jusbrasil-bracis-2026/desafio1_bracis.db
+  output: data/desafio1_bracis_enriched.db
+  audit_dir: outputs/database-preprocessing/run-004
+  model: gemini-3.8-flash
+  base_url: https://generativelanguage.googleapis.com/v1beta/openai/
+  api_key: $GEMINI_API_KEY
+  temperature: null
+  top_p: null
+  top_k: null
+  reasoning_effort: null
+  max_concurrency: 50
+  max_retries: 3
+  retry_delay_seconds: 1
+
+extractor:
+  model: gemini-3.8-flash
+  base_url: https://generativelanguage.googleapis.com/v1beta/openai/
+  temperature: null
+  top_p: null
+  top_k: null
+  reasoning_effort: null
+  async_requests: true
+  max_concurrency: 20
+  debug: true
+
+completeness:
+  model: gemini-3.8-flash
+  base_url: https://generativelanguage.googleapis.com/v1beta/openai/
+  temperature: null
+  top_p: null
+  top_k: null
+  reasoning_effort: null
+  async_requests: true
+  max_concurrency: 20
+
+entities:
+  model: gemini-3.8-flash
+  base_url: https://generativelanguage.googleapis.com/v1beta/openai/
+  temperature: null
+  top_p: null
+  top_k: null
+  reasoning_effort: null
+  async_requests: true
+  max_concurrency: 20
+  max_retries: 3
+  request_timeout_seconds: 30
+
+
+# Ollama: http://127.0.0.1:11434/v1 e reasoning_effort: none
+# vLLM: http://HOST:PORT/v1
+
+# openai: https://api.openai.com/v1
+# openrouter: https://openrouter.ai/api/v1

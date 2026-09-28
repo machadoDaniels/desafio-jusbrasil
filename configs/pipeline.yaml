@@ -1,0 +1,43 @@
+input_dir: desafio-jusbrasil-bracis-2026/txt
+workdir: outputs/run-010-gemma-4-12b-it-qat-w4a16-ct
+database: data/desafio1_bracis_enriched_gemma4-12b-fewshot.db
+
+extractor:
+  model: google/gemma-4-12B-it-qat-w4a16-ct
+  base_url: https://84a5-200-137-197-215.ngrok-free.app/v1
+  temperature: null
+  top_p: null
+  top_k: null
+  reasoning_effort: null
+  async_requests: true
+  max_concurrency: 8
+  debug: true
+
+completeness:
+  model: google/gemma-4-12B-it-qat-w4a16-ct
+  base_url: https://84a5-200-137-197-215.ngrok-free.app/v1
+  temperature: null
+  top_p: null
+  top_k: null
+  reasoning_effort: null
+  async_requests: true
+  max_concurrency: 8
+
+entities:
+  model: google/gemma-4-12B-it-qat-w4a16-ct
+  base_url: https://84a5-200-137-197-215.ngrok-free.app/v1
+  temperature: null
+  top_p: null
+  top_k: null
+  reasoning_effort: null
+  async_requests: true
+  max_concurrency: 8
+  max_retries: 5
+  request_timeout_seconds: 60
+
+
+# Ollama: http://127.0.0.1:11434/v1 e reasoning_effort: none
+# vLLM: http://HOST:PORT/v1
+
+# openai: https://api.openai.com/v1
+# openrouter: https://openrouter.ai/api/v1

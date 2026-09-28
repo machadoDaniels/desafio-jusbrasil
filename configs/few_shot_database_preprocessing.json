@@ -1,0 +1,94 @@
+{
+ "acordao": [
+  {
+   "documento_id": "doc_0018",
+   "entrada": {
+    "tribunal": "STF",
+    "ano": 2024,
+    "texto": "21/05/2024 SEGUNDA TURMA AG.REG. NA RECLAMAÇÃO 55.624 RONDÔNIA RELATOR : MIN. EDSON FACHIN AGTE.(S) : FUNDACAO NACIONAL DE SAÚDE PROC.(A/S)(ES) : PROCURADOR-GERAL FEDERAL AGDO.(A/S) : DANIEL DOS SANTOS ASSISTIDO PELO SINDICATO DOS SERVIDORES PÚBLICOS FEDERAIS NO ESTADO DE RONDÔNIA-SINDSEF ADV.(A/S) : RAUL RIBEIRO DA FONSECA FILHO ADV.(A/S) : ELTON JOSE ASSIS ADV.(A/S) : VINICIUS DE ASSIS ADV.(A/S) : FELIPPE ROBERTO PESTANA INTDO.(A/S) : TRIBUNAL SUPERIOR DO TRABALHO ADV.(A/S) : SEM REPRESENTAÇÃO NOS AUTOS EMENTA: RECLAMAÇÃO. FUNASA. INDENIZAÇÃO. VERBAS TRABALHISTAS RELATIVAS A PERÍODO ANTERIOR À TRANSMUTAÇÃO DE REGIME. COMPETÊNCIA. AÇÃO RESCISÓRIA INCABÍVEL. ACÓRDÃO RESCINDENTO DE ACORDO COM A JURISPRUDÊCIA DO TST E DO STF. TEMAS 928 E 136. AUSÊNCIA DE TERATOLOGIA. ADI 3395. FALTA DE ADERÊNCIA. AGRAVO REGIMENTAL DESPROVIDO. 1. Uma vez que a decisão rescindenda revela-se em harmonia com a jurisprudência do Tribunal Superior do Trabalho e do Supremo Tribunal Federal com ela contemporânea, constata-se a inexistência de teratologia ou peculiaridade maior capaz de macular a decisão que, aplicando os Temas 928 e 136 da sistemática da repercussão geral, inadmite a ação rescisória. 2. É inviável a reclamação cujo conhecimento dependa do reexame do conjunto fático-probatório a que chegaram as instâncias ordinárias. 3. Tendo em vista que a questão objeto do acórdão reclamado, no que inadmitiu a ação rescisória com fundamento nos Temas 928 e 136 da sistemática da repercussão geral, não "
+   },
+   "saida": {
+    "numero_processo_cnj": null,
+    "numero_classe_tribunal": "55624",
+    "numero_registro_tribunal": null,
+    "classe_processual": "Rcl — Reclamação",
+    "cadeia_recursal": [
+     "AgRg — Agravo Regimental",
+     "Rcl — Reclamação"
+    ],
+    "uf": "RO"
+   }
+  },
+  {
+   "documento_id": "doc_0222",
+   "entrada": {
+    "tribunal": "STJ",
+    "ano": 2019,
+    "texto": "AgInt no RECURSO ESPECIAL Nº 1.820.970 - SC (2019/0172353-7) RELATOR : MINISTRO MAURO CAMPBELL MARQUES AGRAVANTE : UNIÃO AGRAVADO : JOÃO FRANCISCO DE SOUZA ADVOGADOS : CLÁUDIO SANTOS DA SILVA - DF010081 LUÍS FERNANDO SILVA - SC009582 GUSTAVO ANTONIO PEREIRA GOULART E OUTRO (S) - SC019171 BERNARDO FÓES BIANCHINI - SC047118 EMENTA PROCESSUAL CIVIL E ADMINISTRATIVO. AGRAVO INTERNO EM RECURSO ESPECIAL. ENUNCIADO ADMINISTRATIVO N. 3/STJ. SERVIDOR PÚBLICO. REAJUSTE. QUESTÃO NÃO SUSCITADA EM MOMENTO OPORTUNO NO PROCESSO DE CONHECIMENTO. PRECLUSÃO. ENTENDIMENTO CONSOLIDADO PELA PRIMEIRA SEÇÃO NO RESP 1.235.513/AL, JULGADO SOB O RITO DO ART. 543-C DO CPC/1973. AGRAVO INTERNO NÃO PROVIDO. 1. Com efeito, este Superior Tribunal de Justiça, no julgamento do REsp 1.235.513/AL - de relatoria do Min. Castro Meira, submetido a Primeira Seção sob o rito previsto no artigo 543-C do CPC/1973 - firmou o entendimento no sentido de que eventuais limitações ao pagamento de índices remuneratórios, que poderiam ser analisados em processo de cognição, não podem ser suscitadas na fase executiva, sob pena de ofensa à coisa julgada. 2. Agravo interno não provido. ACÓRDÃO Vistos, relatados e discutidos esses autos em que são partes as acima indicadas, acordam os Ministros da SEGUNDA TURMA do Superior Tribunal de Justiça, na conformidade dos votos e das notas taquigráficas, o seguinte resultado de julgamento: \"A Turma, por unanimidade, negou provimento ao agravo interno, nos termos do voto do (a) Sr (a). Mi"
+   },
+   "saida": {
+    "numero_processo_cnj": null,
+    "numero_classe_tribunal": "1820970",
+    "numero_registro_tribunal": "201901723537",
+    "classe_processual": "REsp — Recurso Especial",
+    "cadeia_recursal": [
+     "AgInt — Agravo Interno",
+     "REsp — Recurso Especial"
+    ],
+    "uf": "SC"
+   }
+  },
+  {
+   "documento_id": "doc_0402",
+   "entrada": {
+    "tribunal": "TSE",
+    "ano": 2017,
+    "texto": "TRIBUNAL SUPERIOR ELEITORAL ACÓRDÃO AGRAVO REGIMENTAL NO RECURSO ESPECIAL ELEITORAL Nº 378-82.2016.6.05.0151 - CLASSE 32— GANDU - BAHIA Relator: Ministro Henrique Neves da Silva Agravante: Adailton Santos Silva Advogados: Joel de Souza NeivaJúnior — OAB: 21118/BA e outros Agravado: Ministério Público Eleitoral ELEIÇÕES 2016. AGRAVO REGIMENTAL. RECURSO ESPECIAL. REGISTRO. CANDIDATO AO CARGO DE VEREADOR. INELEGIBILIDADE. ART. P, 1, e, DA LEI COMPLEMENTAR 64/90. Não houve impugnação objetiva dos fundamentos da decisão agravada, a saber: a) inexistência de violação ao preceito constitucional da irretroatividade das leis no que tange à inelegibilidade decorrente de condenações criminais; b) conformidade do entendimento do Tribunal a quo com a jurisprudência do Tribunal Superior Eleitoral e com precedente vinculante do Supremo Tribunal Federal; e c) diferença entre as hipóteses de inelegibilidade, não se aplicando aos casos de condenação criminal as decisões monocráticas deste Tribunal e do Supremo Tribunal Federal referentes à inelegibilidade prevista na alínea ddo inciso 1 do art. 1 0 da Lei Complementar 64/90, cujo tema envolve a análise de decisões judiciais que, sob o crivo da legislação eleitoral anterior, aplicaram prazos de inelegibilidade diversos dos hoje existentes. A discussão nesses casos, voltada à análise da formação de coisa julgada material, não se confunde com a hipótese de condenação criminal. De acordo com a jurisprudência do Tribunal Superior Eleitoral e na lin"
+   },
+   "saida": {
+    "numero_processo_cnj": "00003788220166050151",
+    "numero_classe_tribunal": null,
+    "numero_registro_tribunal": null,
+    "classe_processual": "REspe — Recurso Especial Eleitoral",
+    "cadeia_recursal": [
+     "AgRg — Agravo Regimental",
+     "REspe — Recurso Especial Eleitoral"
+    ],
+    "uf": "BA"
+   }
+  },
+  {
+   "documento_id": "doc_0802",
+   "entrada": {
+    "tribunal": "STM",
+    "ano": 2023,
+    "texto": "Poder Judiciário STM EXTRATO DE ATA DA SESSÃO VIRTUAL DE 15/05/2023 A 18/05/2023 APELAÇÃO CRIMINAL Nº 7000075-58.2022.7.00.0000/PR RELATORA: MINISTRA MARIA ELIZABETH GUIMARÃES TEIXEIRA ROCHA REVISOR: MINISTRO CARLOS AUGUSTO AMARAL OLIVEIRA PRESIDENTE: MINISTRO FRANCISCO JOSELI PARENTE CAMELO APELANTE: MINISTÉRIO PÚBLICO MILITAR APELADO: CLEVERSON PEREIRA ADVOGADO (A): MOACIR BARBOSA JUNIOR (OAB PR75828) Certifico que o Tribunal Pleno, ao apreciar os autos do processo em epígrafe, proferiu a seguinte decisão: O TRIBUNAL PLENO, POR UNANIMIDADE, DECIDIU CONHECER E, POR MAIORIA, VENCIDA A RELATORA, DECIDIU DAR PROVIMENTO AO RECURSO DO MINISTÉRIO PÚBLICO MILITAR PARA, REFORMANDO A SENTENÇA \"A QUO\", CONDENAR CLEVERSON PEREIRA, EX-SOLDADO DO EXÉRCITO, COMO INCURSO NO ARTIGO 206, § 1º, DO CÓDIGO PENAL MILITAR, À PENA DE 3 (TRÊS) ANOS, 7 (SETE) MESES E 3 (TRÊS) DIAS DE DETENÇÃO, A SER CUMPRIDA EM REGIME INICIAL ABERTO, NA CONFORMIDADE DO ARTIGO 33, § 2º, ALÍNEA C, DO CÓDIGO PENAL, E COM O DIREITO DE CONTINUAR RECORRENDO EM LIBERDADE. OS MINISTROS MARIA ELIZABETH GUIMARÃES TEIXEIRA ROCHA (RELATORA) E JOSÉ COÊLHO FERREIRA CONHECIAM E NEGAVAM PROVIMENTO AO RECURSO DA ACUSAÇÃO, PARA MANTER ÍNTEGRA A SENTENÇA ABSOLUTÓRIA PELOS SEUS PRÓPRIOS E JURÍDICOS FUNDAMENTOS. RELATOR PARA ACÓRDÃO MINISTRO CARLOS AUGUSTO AMARAL OLIVEIRA (REVISOR). A MINISTRA MARIA ELIZABETH GUIMARÃES TEIXEIRA ROCHA (RELATORA) FARÁ VOTO VENCIDO. AUSENTE, JUSTIFICADAMENTE, O MINISTRO ODILSON SAMPAIO BENZI. PRESIDÊNCIA D"
+   },
+   "saida": {
+    "numero_processo_cnj": "70000755820227000000",
+    "numero_classe_tribunal": null,
+    "numero_registro_tribunal": null,
+    "classe_processual": "APL — Apelação",
+    "cadeia_recursal": [
+     "APL — Apelação"
+    ],
+    "uf": "PR"
+   }
+  }
+ ],
+ "dispositivo": [
+  {
+   "documento_id": "sintetico_clt_468",
+   "entrada": {
+    "tribunal": null,
+    "texto": "Artigo 468 do Decreto-Lei nº 5.452, de 1º de maio de 1943 Art. 468 - Nos contratos individuais de trabalho só é lícita a alteração das respectivas condições por mútuo consentimento, e ainda assim desde que não resultem, direta ou indiretamente, prejuízos ao empregado, sob pena de nulidade da cláusula infringente desta garantia."
+   },
+   "saida": {
+    "diploma": "CLT — Consolidação das Leis do Trabalho",
+    "numero_diploma": "5452",
+    "ano_diploma": 1943,
+    "numero_artigo": "468"
+   }
+  }
+ ]
+}

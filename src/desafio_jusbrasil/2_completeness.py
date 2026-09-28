@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import argparse
 import asyncio
 from pathlib import Path
 from typing import Any
@@ -162,13 +163,13 @@ class AgenteCompletude:
         Substitui a classe Pydantic de ``response_format`` pelo schema enviado ao
         servidor e separa a resposta bruta do resultado estruturado. O campo
         interno ``parsed`` é removido da cópia bruta porque contém um objeto
-        Pydantic não pertencente à resposta HTTP e já está em ``estruturada``.
+        Pydantic não pertencente à resposta HTTP e já está em ``resultado``.
         """
         return criar_auditoria(
             requisicao,
             resposta,
             ResultadoCompletude,
-            resultado.model_dump(mode="json"),
+            resultado=resultado.model_dump(mode="json"),
         )
 
     @staticmethod
@@ -312,8 +313,11 @@ async def _executar_completude_async(
 
 
 def main() -> None:
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--config", type=Path, default=Path("pipeline.yaml"))
+    args = parser.parse_args()
     load_dotenv()
-    config = PipelineConfig.from_yaml(Path("pipeline.yaml"))
+    config = PipelineConfig.from_yaml(args.config)
     entrada = config.workdir / "01-extraction"
     destino = config.workdir / "02-completeness"
     etapa = config.completeness

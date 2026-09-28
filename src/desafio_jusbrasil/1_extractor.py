@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import argparse
 import asyncio
 import logging
 from pathlib import Path
@@ -128,7 +129,7 @@ class AgenteExtrator:
             requisicao,
             resposta,
             LoteCandidatosRequest,
-            [item.model_dump(mode="json") for item in resultado],
+            campos_extraidos=[item.model_dump(mode="json") for item in resultado],
         )
 
     async def _consultar_modelo_async(
@@ -320,8 +321,11 @@ async def _executar_extracao_async(config: PipelineConfig, destino: Path) -> Non
 
 
 def main() -> None:
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--config", type=Path, default=Path("pipeline.yaml"))
+    args = parser.parse_args()
     load_dotenv()
-    config = PipelineConfig.from_yaml(Path("pipeline.yaml"))
+    config = PipelineConfig.from_yaml(args.config)
     destino = config.workdir / "01-extraction"
     escrever_manifesto_etapa(destino, "extractor", config.extractor)
     if config.extractor.async_requests:
