@@ -82,7 +82,7 @@ Se você "limpar" o trecho, ele não será encontrado no documento e a citação
 SAÍDA
 Um item por citação, na ordem em que aparecem, sem repetir. Campo `tipo`: "jurisprudencia" para
 itens 1, 2 e 4; "lei" para o item 3. Campo `confianca_extracao`: 1.0 quando a referência tem
-identificador numérico claro; 0.7 quando é descritiva sem número ou está muito corrompida pelo OCR."""
+identificador numérico, mesmo com ruído de OCR; 0.9 quando é descritiva, sem número."""
 
 
 class AgenteExtrator:
