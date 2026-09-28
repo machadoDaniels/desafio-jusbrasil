@@ -60,13 +60,16 @@ existe: um número inexistente deve ser extraído do mesmo jeito.
 
 CAMPOS
 - natureza: "sumula" quando o trecho menciona Súmula; "acordao" para processo ou recurso.
-- numero_processo_cnj: o número único nacional, formato NNNNNNN-DD.AAAA.J.TR.OOOO.
-  Devolva os 20 dígitos, completando o primeiro bloco com zeros à esquerda até 7 dígitos.
-  Sempre que o trecho tiver esse formato, preencha ESTE campo e deixe numero_classe_tribunal
-  e numero_registro_tribunal nulos. Nunca divida um CNJ entre outros campos.
-    "0600216-46.2020.6.14.0022"          → "06002164620206140022"
-    "ARR-471-22.2011.5.03.0044"          → "00004712220115030044"
-    "TST-RR-79500-16.2009.5.15.0016"     → "00795001620095150016"
+- numero_processo_cnj: o número único nacional, 20 dígitos em 6 blocos: 7 + 2 + 4 + 1 + 2 + 4.
+  Pode vir com pontos ("7001184-15.2019.7.00.0000") ou sem ("7001184-1520197000000"):
+  os dois são o mesmo número. Copie TODOS os dígitos na ordem em que aparecem, sem
+  reagrupar, sem inserir nem remover nenhum; se o primeiro bloco tiver menos de 7 dígitos,
+  complete com zeros à esquerda. Sempre que o trecho tiver esse formato, preencha ESTE campo
+  e deixe numero_classe_tribunal e numero_registro_tribunal nulos.
+    "0600216-46.2020.6.14.0022"      → "06002164620206140022"
+    "7001184-1520197000000"          → "70011841520197000000"
+    "ARR-471-22.2011.5.03.0044"      → "00004712220115030044"
+    "TST-RR-79500-16.2009.5.15.0016" → "00795001620095150016"
 - numero_classe_tribunal: o número sequencial que acompanha a sigla da classe nas numerações
   próprias de STF e STJ, somente dígitos. "REsp 1.741.784" → "1741784"; "Rcl 68.244" → "68244".
 - numero_registro_tribunal: o registro interno no formato AAAA/NNNNNNN-D, somente dígitos.
@@ -84,6 +87,7 @@ CAMPOS
 - relator: o nome como aparece, sem "Rel.", "Min." ou "Ministro".
 - numero_sumula e sumula_vinculante: preencha para súmulas; sumula_vinculante é true
   apenas para "Súmula Vinculante" do STF.
+- Em súmulas, numero_processo_cnj, numero_classe_tribunal e numero_registro_tribunal ficam nulos.
 
 NÚMEROS COM RUÍDO
 O trecho pode vir de OCR, com quebras de linha e pontuação irregular no meio do número.
