@@ -1,5 +1,5 @@
 input_dir: desafio-jusbrasil-bracis-2026/txt
-workdir: outputs/run-017-cnj-sumula
+workdir: outputs/run-018-cnj-sem-zeros
 database: data/desafio1_bracis_enriched_gold.db
 
 extractor:
