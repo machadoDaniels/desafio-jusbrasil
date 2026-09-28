@@ -1,0 +1,54 @@
+database_preprocessing:
+  input: desafio-jusbrasil-bracis-2026/desafio1_bracis.db
+  output: data/desafio1_bracis_enriched_nuextract3-fewshot.db
+  audit_dir: outputs/database-preprocessing/exp-nuextract3-fewshot
+  model: numind/NuExtract3
+  base_url: http://10.100.20.115:8440/v1
+  api_key: null
+  temperature: 0.2
+  top_p: null
+  top_k: null
+  reasoning_effort: null
+  max_concurrency: 16
+  max_retries: 3
+  retry_delay_seconds: 1
+  request_timeout_seconds: 40
+  text_start_char_limit: 10000
+  text_end_char_limit: 5000
+  few_shot_path: configs/few_shot_database_preprocessing.json
+  chat_template_kwargs:
+    enable_thinking: false
+
+  nuextract_templates:
+    acordao:
+      numero_processo_cnj: string
+      numero_classe_tribunal: string
+      numero_registro_tribunal: string
+      classe_processual: [AI — Agravo de Instrumento, APL — Apelação, AR — Ação Rescisória, AREsp — Agravo em Recurso Especial, AREspe — Agravo em Recurso Especial Eleitoral, ARR — Recurso de Revista com Agravo, AgInt — Agravo Interno, AgRg — Agravo Regimental, E — Embargos, EDcl — Embargos de Declaração, HC — Habeas Corpus, RE — Recurso Extraordinário, REsp — Recurso Especial, REspe — Recurso Especial Eleitoral, RHC — Recurso em Habeas Corpus, RMS — Recurso em Mandado de Segurança, RR — Recurso de Revista, RSE — Recurso em Sentido Estrito, Rcl — Reclamação, Rp — Representação, SLS — Suspensão de Liminar e de Sentença]
+      cadeia_recursal:
+      - [AI — Agravo de Instrumento, APL — Apelação, AR — Ação Rescisória, AREsp — Agravo em Recurso Especial, AREspe — Agravo em Recurso Especial Eleitoral, ARR — Recurso de Revista com Agravo, AgInt — Agravo Interno, AgRg — Agravo Regimental, E — Embargos, EDcl — Embargos de Declaração, HC — Habeas Corpus, RE — Recurso Extraordinário, REsp — Recurso Especial, REspe — Recurso Especial Eleitoral, RHC — Recurso em Habeas Corpus, RMS — Recurso em Mandado de Segurança, RR — Recurso de Revista, RSE — Recurso em Sentido Estrito, Rcl — Reclamação, Rp — Representação, SLS — Suspensão de Liminar e de Sentença]
+      uf: region:BR
+    sumula: {numero_sumula: integer, sumula_vinculante: boolean}
+    dispositivo:
+      diploma: [CF — Constituição Federal, CC — Código Civil, CDC — Código de Defesa do Consumidor, CPC — Código de Processo Civil, CPP — Código de Processo Penal, CPM — Código Penal Militar, CE — Código Eleitoral, CLT — Consolidação das Leis do Trabalho, LC — Lei Complementar, Lei]
+      numero_diploma: string
+      ano_diploma: integer
+      numero_artigo: verbatim-string
+
+  prompts:
+    acordao: |-
+      Extraia somente metadados jurídicos explicitamente sustentados pelo documento.
+      Não use conhecimento externo e não invente valores. Extraia separadamente o CNJ do processo
+      julgado, o número sequencial junto da classe do tribunal e o número de registro do tribunal;
+      não use CNJ de processo apenas mencionado. Retorne números somente com algarismos. Extraia a
+      classe principal, todas as classes da cadeia recursal e a UF. A cadeia não tem ordem nem
+      repetições. Campos ausentes devem ser nulos.
+    sumula: |-
+      Extraia somente os metadados explicitamente sustentados pela súmula. Não use
+      conhecimento externo e não invente valores. Informe o número da súmula e se ela é vinculante;
+      use nulo quando o documento não sustentar o campo.
+    dispositivo: |-
+      Extraia somente os metadados legislativos explicitamente sustentados pelo
+      dispositivo. Não use conhecimento externo e não invente valores. Normalize o diploma para o
+      vocabulário permitido e retorne números de diploma somente com algarismos. Preserve sufixos
+      alfanuméricos do artigo. Campos ausentes devem ser nulos.

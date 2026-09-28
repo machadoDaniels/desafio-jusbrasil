@@ -14,7 +14,7 @@ database_preprocessing:
   retry_delay_seconds: 1
   request_timeout_seconds: 120
   text_start_char_limit: 10000
-  text_end_char_limit: 2000
+  text_end_char_limit: 5000
 
   prompts:
     acordao: |-
