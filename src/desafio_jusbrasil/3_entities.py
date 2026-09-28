@@ -63,9 +63,11 @@ CAMPOS
 - numero_processo_cnj: o número único nacional, 20 dígitos em 6 blocos: 7 + 2 + 4 + 1 + 2 + 4.
   Pode vir com pontos ("7001184-15.2019.7.00.0000") ou sem ("7001184-1520197000000"):
   os dois são o mesmo número. Copie TODOS os dígitos na ordem em que aparecem, sem
-  reagrupar, sem inserir nem remover nenhum. Não acrescente zeros: devolva exatamente os
-  dígitos que estão no trecho, mesmo que sejam menos de 20. Sempre que o trecho tiver esse
+  reagrupar, sem inserir nem remover nenhum. Não acrescente zeros que não estão no trecho.
+  Se o número continua depois de uma quebra de linha, espaço ou hífen duplo, inclua a
+  continuação: o CNJ só termina no último bloco de 4 dígitos. Sempre que o trecho tiver esse
   formato, preencha ESTE campo e deixe numero_classe_tribunal e numero_registro_tribunal nulos.
+    "0600216-46.2020-\n.6.14.0022"    → "06002164620206140022"
     "0600216-46.2020.6.14.0022"      → "06002164620206140022"
     "7001184-1520197000000"          → "70011841520197000000"
     "ARR-471-22.2011.5.03.0044"      → "4712220115030044"
@@ -316,6 +318,14 @@ class AgenteExtratorEntidades:
                     )
                 )
             dados = consulta.model_dump()
+            if natureza == "sumula":
+                # Súmula resolve por número de súmula; números de processo aqui
+                # são ruído do modelo e fariam a veracidade consultar acórdãos.
+                numero_cnj = None
+                dados.update(
+                    numero_classe_tribunal=None,
+                    numero_registro_tribunal=None,
+                )
             dados.update(
                 natureza=natureza,
                 numero_processo_cnj=numero_cnj,
