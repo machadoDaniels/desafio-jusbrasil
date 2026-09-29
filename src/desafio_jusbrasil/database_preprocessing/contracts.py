@@ -214,6 +214,18 @@ class _MetadadosAcordaoAgente(Contract):
 
 
 
+class _MetadadosAcordaoSemantico(Contract):
+    """Campos que continuam a cargo do modelo no modo híbrido (chaves vêm do cabeçalho)."""
+
+    classe_processual: ClasseProcessualAgente | None = _MetadadosAcordaoAgente.model_fields[
+        "classe_processual"
+    ]
+    cadeia_recursal: list[ClasseProcessualAgente] | None = _MetadadosAcordaoAgente.model_fields[
+        "cadeia_recursal"
+    ]
+    uf: UF | None = _MetadadosAcordaoAgente.model_fields["uf"]
+
+
 class MetadadosAcordao(_MetadadosAcordaoAgente):
     """Metadados de acórdão completos após normalização determinística."""
 

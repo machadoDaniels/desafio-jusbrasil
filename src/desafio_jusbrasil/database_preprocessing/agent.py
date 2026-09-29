@@ -13,6 +13,7 @@ from openai import AsyncOpenAI, OpenAIError, omit
 from pydantic import ValidationError
 
 from ..utils import normalizar_numero_cnj
+from . import cabecalho
 from .contracts import (
     CONTRATOS_COM_TRECHOS,
     Contract,
@@ -23,6 +24,7 @@ from .contracts import (
     MetadadosDocumento,
     MetadadosSumula,
     _MetadadosAcordaoAgente,
+    _MetadadosAcordaoSemantico,
     _MetadadosDispositivoAgente,
 )
 
@@ -33,9 +35,16 @@ def _entrada_agente(
     documento: DocumentoFonte,
     text_start_char_limit: int | None,
     text_end_char_limit: int | None,
+    *,
+    janela: str | None = None,
+    chaves: Mapping[str, Any] | None = None,
 ) -> dict[str, Any]:
     entrada = {"tribunal": documento.tribunal}
-    if text_start_char_limit is None and text_end_char_limit is None:
+    if chaves is not None:
+        entrada["chaves_do_cabecalho"] = dict(chaves)
+    if janela is not None:
+        texto = janela
+    elif text_start_char_limit is None and text_end_char_limit is None:
         texto = documento.texto
     elif text_start_char_limit is None:
         texto = documento.texto[-text_end_char_limit:] if text_end_char_limit else ""
@@ -58,6 +67,10 @@ def _requisicao(
     documento: DocumentoFonte,
     contrato: type[Contract],
     config: Mapping[str, Any],
+    *,
+    janela: str | None = None,
+    chaves: Mapping[str, Any] | None = None,
+    prompt: str | None = None,
 ) -> dict[str, Any]:
     extra_body = {
         chave: config[chave]
@@ -69,9 +82,12 @@ def _requisicao(
             documento,
             config["text_start_char_limit"],
             config["text_end_char_limit"],
+            janela=janela,
+            chaves=chaves,
         ),
         ensure_ascii=False,
     )
+    prompt_sistema = prompt if prompt is not None else config["prompts"][documento.natureza]
     exemplos = config.get("_few_shot", {}).get(documento.natureza, [])
     if config.get("nuextract_templates"):
         # NuExtract: template, instruções e exemplos vão pelo chat template.
@@ -97,7 +113,7 @@ def _requisicao(
         ]
     else:
         mensagens = [
-            {"role": "system", "content": config["prompts"][documento.natureza]},
+            {"role": "system", "content": prompt_sistema},
             *(
                 mensagem
                 for exemplo in exemplos
@@ -171,6 +187,10 @@ async def enriquecer_documento(
     semaforo: asyncio.Semaphore,
 ) -> tuple[DocumentoEnriquecido, dict[str, Any]]:
     """Extrai, normaliza e audita os metadados de um documento."""
+    if config.get("modo_chaves", "modelo") == "hibrido":
+        return await _enriquecer_hibrido(
+            documento, cliente=cliente, config=config, semaforo=semaforo
+        )
     contrato = {
         "acordao": _MetadadosAcordaoAgente,
         "sumula": MetadadosSumula,
@@ -253,6 +273,145 @@ async def enriquecer_documento(
         if tentativa < config["max_retries"]:
             await asyncio.sleep(config["retry_delay_seconds"] * tentativa)
 
+    assert ultimo_erro is not None
+    raise RuntimeError(
+        f"{documento.documento_id}: retries esgotados: {ultimo_erro}"
+    ) from ultimo_erro
+
+
+def _auditoria_sem_modelo(config: Mapping[str, Any], chaves: Mapping[str, Any]) -> dict[str, Any]:
+    return {
+        "tentativa": 0,
+        "modelo": config["model"],
+        "fonte": "cabecalho",
+        "parametros": _parametros_auditoria(config),
+        "uso": None,
+        "input": {"chaves_do_cabecalho": dict(chaves)},
+        "output": None,
+    }
+
+
+def _parametros_auditoria(config: Mapping[str, Any]) -> dict[str, Any]:
+    return {
+        chave: valor
+        for chave, valor in config.items()
+        if not chave.startswith("_")
+        and chave not in {"model", "max_concurrency", "max_retries", "retry_delay_seconds"}
+        and valor is not None
+    }
+
+
+async def _enriquecer_hibrido(
+    documento: DocumentoFonte,
+    *,
+    cliente: AsyncOpenAI,
+    config: Mapping[str, Any],
+    semaforo: asyncio.Semaphore,
+) -> tuple[DocumentoEnriquecido, dict[str, Any]]:
+    """Chaves de busca por cabeçalho; modelo somente para classe, cadeia e UF residual.
+
+    Súmulas e dispositivos com cabeçalho regular nem chamam o modelo. Um acórdão sempre
+    chama, porque classe e cadeia recursal exigem leitura semântica; as chaves extraídas
+    por regra prevalecem sobre qualquer valor devolvido pelo modelo.
+    """
+    if documento.natureza == "sumula":
+        campos = cabecalho.campos_sumula(documento)
+        if campos is not None:
+            resultado = DocumentoEnriquecido(
+                documento_id=documento.documento_id,
+                id=documento.id,
+                natureza=documento.natureza,
+                campos=normalizar_campos(documento, MetadadosSumula(**campos)),
+            )
+            return resultado, _auditoria_sem_modelo(config, campos)
+    if documento.natureza == "dispositivo":
+        campos = cabecalho.campos_dispositivo(documento)
+        if campos is not None:
+            resultado = DocumentoEnriquecido(
+                documento_id=documento.documento_id,
+                id=documento.id,
+                natureza=documento.natureza,
+                campos=MetadadosDispositivo(**campos),
+            )
+            return resultado, _auditoria_sem_modelo(config, campos)
+    if documento.natureza != "acordao":
+        # Cabeçalho irregular: cai no fluxo com modelo, sem as chaves de cabeçalho.
+        sem_hibrido = {**config, "modo_chaves": "modelo"}
+        return await enriquecer_documento(
+            documento, cliente=cliente, config=sem_hibrido, semaforo=semaforo
+        )
+
+    extraido = cabecalho.chaves_acordao(
+        documento,
+        janela_chars=config.get("janela_cabecalho_chars") or cabecalho.JANELA_CABECALHO_PADRAO,
+        janela_tst_chars=config.get("janela_tst_chars") or cabecalho.JANELA_TST_PADRAO,
+    )
+    chaves = extraido["campos"]
+    prompt = config["prompts"].get("acordao_semantico") or config["prompts"]["acordao"]
+    requisicao = _requisicao(
+        documento,
+        _MetadadosAcordaoSemantico,
+        config,
+        janela=extraido["janela"],
+        chaves=chaves,
+        prompt=prompt,
+    )
+    ultimo_erro: Exception | None = None
+    for tentativa in range(1, config["max_retries"] + 1):
+        try:
+            async with semaforo:
+                resposta = await cliente.chat.completions.parse(**requisicao)
+            parsed = resposta.choices[0].message.parsed
+            if parsed is None:
+                raise ValueError("o modelo não retornou uma resposta estruturada")
+            dados = {
+                **parsed.model_dump(),
+                **{chave: valor for chave, valor in chaves.items() if valor is not None},
+            }
+            if dados.get("uf") is None:
+                dados["uf"] = parsed.uf
+            campos = _MetadadosAcordaoAgente.model_validate(dados)
+            resultado = DocumentoEnriquecido(
+                documento_id=documento.documento_id,
+                id=documento.id,
+                natureza=documento.natureza,
+                campos=normalizar_campos(documento, campos),
+            )
+            usage = getattr(resposta, "usage", None)
+            return resultado, {
+                "tentativa": tentativa,
+                "modelo": config["model"],
+                "fonte": "cabecalho+modelo",
+                "parametros": _parametros_auditoria(config),
+                "uso": usage.model_dump(mode="json") if usage is not None else None,
+                "input": _input_auditoria(requisicao, _MetadadosAcordaoSemantico),
+                "output": resposta.model_dump(
+                    mode="json",
+                    exclude={"choices": {"__all__": {"message": {"parsed"}}}},
+                ),
+            }
+        except (ValidationError, ValueError, IndexError, AttributeError) as erro:
+            ultimo_erro = erro
+            requisicao["messages"].append(
+                {
+                    "role": "user",
+                    "content": (
+                        "A resposta anterior foi inválida. Corrija sem inventar dados: "
+                        f"{str(erro)[:2000]}"
+                    ),
+                }
+            )
+        except OpenAIError as erro:
+            ultimo_erro = erro
+        _LOG.info(
+            "documento %s: tentativa %d/%d falhou: %s",
+            documento.documento_id,
+            tentativa,
+            config["max_retries"],
+            ultimo_erro,
+        )
+        if tentativa < config["max_retries"]:
+            await asyncio.sleep(config["retry_delay_seconds"] * tentativa)
     assert ultimo_erro is not None
     raise RuntimeError(
         f"{documento.documento_id}: retries esgotados: {ultimo_erro}"

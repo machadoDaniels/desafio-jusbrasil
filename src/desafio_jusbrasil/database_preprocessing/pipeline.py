@@ -57,6 +57,9 @@ def _checkpoint_reutilizavel(
         != configuracao.get("text_end_char_limit")
         or parametros.get("few_shot_path") != configuracao.get("few_shot_path")
         or parametros.get("extrair_verbatim", False) != configuracao["extrair_verbatim"]
+        or parametros.get("modo_chaves", "modelo") != configuracao.get("modo_chaves", "modelo")
+        or parametros.get("janela_cabecalho_chars") != configuracao.get("janela_cabecalho_chars")
+        or parametros.get("janela_tst_chars") != configuracao.get("janela_tst_chars")
         or ("prompts" in parametros and parametros["prompts"] != configuracao["prompts"])
     ):
         return None
@@ -153,6 +156,9 @@ async def executar_async(
         "few_shot_path": configuracao.get("few_shot_path"),
         "nuextract_templates": configuracao.get("nuextract_templates"),
         "extrair_verbatim": configuracao.get("extrair_verbatim", False),
+        "modo_chaves": configuracao.get("modo_chaves", "modelo"),
+        "janela_cabecalho_chars": configuracao.get("janela_cabecalho_chars"),
+        "janela_tst_chars": configuracao.get("janela_tst_chars"),
         "_few_shot": (
             json.loads(Path(configuracao["few_shot_path"]).read_text(encoding="utf-8"))
             if configuracao.get("few_shot_path")

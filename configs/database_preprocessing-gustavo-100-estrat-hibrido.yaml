@@ -1,0 +1,56 @@
+database_preprocessing:
+  input: outputs/preproc-100/desafio1_bracis_100_estrat.db
+  output: outputs/preproc-100/desafio1_bracis_100_estrat_enriched_hibrido.db
+  audit_dir: outputs/database-preprocessing/gustavo-100-estrat-hibrido
+  model: google/gemma-4-12B-it-qat-w4a16-ct
+  base_url: http://10.100.20.116:8412/v1
+  api_key: $OPENAI_API_KEY
+  temperature: 0
+  top_p: null
+  top_k: null
+  reasoning_effort: null
+  max_concurrency: 4
+  max_retries: 3
+  retry_delay_seconds: 1
+  request_timeout_seconds: 120
+  text_start_char_limit: 10000
+  text_end_char_limit: 2000
+  prompts:
+    acordao: |-
+      Extraia somente metadados jurídicos explicitamente sustentados pelo documento.
+      Não use conhecimento externo e não invente valores. Extraia separadamente o CNJ do processo
+      julgado, o número sequencial junto da classe do tribunal e o número de registro do tribunal;
+      não use CNJ de processo apenas mencionado. Retorne números somente com algarismos. Extraia a
+      classe principal, todas as classes da cadeia recursal e a UF. A cadeia não tem ordem nem
+      repetições. Campos ausentes devem ser nulos.
+    sumula: |-
+      Extraia somente os metadados explicitamente sustentados pela súmula. Não use
+      conhecimento externo e não invente valores. Informe o número da súmula e se ela é vinculante;
+      use nulo quando o documento não sustentar o campo.
+    dispositivo: |-
+      Extraia somente os metadados legislativos explicitamente sustentados pelo
+      dispositivo. Não use conhecimento externo e não invente valores. Normalize o diploma para o
+      vocabulário permitido e retorne números de diploma somente com algarismos. Preserve sufixos
+      alfanuméricos do artigo. Campos ausentes devem ser nulos.
+    acordao_semantico: |-
+      CONTEXTO
+      Você enriquece a base canônica de acórdãos de um verificador de citações jurídicas. As chaves de
+      busca (número CNJ, número de classe, registro e UF) já foram extraídas do cabeçalho por regra e
+      vêm em `chaves_do_cabecalho`; não as repita nem as corrija. Sua tarefa é ler o cabeçalho e devolver
+      apenas a classificação processual, que uma etapa posterior usa para desempatar registros com o
+      mesmo número.
+
+      CAMPOS
+      - classe_processual: a classe do processo-base, isto é, a última da cadeia de recursos. Em
+        "AgInt no REsp" é REsp; em "AG.REG. NA RECLAMAÇÃO" é Rcl; em "EDcl no AgRg no AREsp" é AREsp.
+        Escolha entre os valores permitidos; se nenhum corresponder, null.
+      - cadeia_recursal: todas as classes explicitamente nomeadas no cabeçalho ou no código do processo
+        (por exemplo, cada sigla em "TST-ED-E-ED-RR"), incluindo a classe principal, sem ordem e sem
+        repetição. Só o que está escrito; não deduza recursos que o texto não menciona.
+      - uf: preencha somente se `chaves_do_cabecalho.uf` vier nulo e o cabeçalho trouxer a unidade da
+        federação por extenso ou pela sigla; caso contrário, null.
+
+      Não use conhecimento externo, não invente valores e não avalie o mérito do acórdão.
+  modo_chaves: hibrido
+  janela_cabecalho_chars: 500
+  janela_tst_chars: 1500
