@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import Any, Literal
+from typing import get_args, Any, Literal
 
 from pydantic import (
     BaseModel,
@@ -172,6 +172,10 @@ class _MetadadosAcordaoAgente(Contract):
     cadeia_recursal: list[ClasseProcessualAgente] | None = Field(
         default=None,
         validate_default=True,
+        # Sem repetições, uma entrada por classe permitida é o teto. Um array limitado
+        # mantém a decodificação guiada finita: sem isso o modelo repete o mesmo item
+        # até o limite de tokens (14/100 documentos na rodada de 2026-09-29).
+        max_length=len(get_args(ClasseProcessualAgente.__value__)),
         description=(
             "Todas as classes processuais explicitamente presentes na cadeia recursal, "
             "sem ordem nem repetições."
