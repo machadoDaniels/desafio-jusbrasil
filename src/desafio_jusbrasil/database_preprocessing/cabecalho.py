@@ -57,7 +57,7 @@ _DIPLOMAS_POR_NUMERO = {
 _CNJ = r"(\d{1,7})\s*-\s*(\d{2})\s*\.\s*(\d{4})\s*\.\s*(\d)\s*\.\s*(\d{2})\s*\.\s*(\d{4})"
 _RE_CNJ = re.compile(r"(?<!\d)" + _CNJ + r"(?!\d)")
 _RE_TST = re.compile(r"\bTST\s*-\s*(?:[A-Z]{1,6}\s*-\s*)+" + _CNJ + r"(?!\d)")
-_RE_NUMERO = re.compile(r"N[º°O.]?\s*(\d{1,3}(?:\.\s?\d{3})+|\d{4,8})(?!\d)")
+_RE_NUMERO = re.compile(r"N[º°O.]?\s*(\d{1,3}(?:\.\s?\d{3})+|\d{1,8})(?![\d.])")
 _RE_REGISTRO_STJ = re.compile(r"\(\s*(\d{4})\s*/\s*(\d{7})\s*-\s*(\d)\s*\)")
 _RE_UF_STJ = re.compile(r"\d\s*[-–]\s*([A-Z]{2})\s*\(")
 _RE_UF_STM = re.compile(r"\.\d{4}\s*/\s*([A-Z]{2})\b")
@@ -78,6 +78,23 @@ _RE_DISPOSITIVO = re.compile(
     r"|(LEI COMPLEMENTAR|DECRETO-LEI|LEI)\s+N[º°O.]?\s*([\d.]+)\s*,?\s+DE\s+(?:.*?\bDE\s+)?(\d{4})"
     r")"
 )
+
+
+# Classes que só existem em um tribunal: o modelo confunde "REsp" com "REspe" (e vice-versa).
+_CLASSES_TSE = {"REsp": "REspe", "AREsp": "AREspe"}
+_CLASSES_NAO_TSE = {valor: chave for chave, valor in _CLASSES_TSE.items()}
+
+
+def classe_coerente_com_tribunal(classe: str | None, tribunal: str | None) -> str | None:
+    """Corrige a variante eleitoral/não eleitoral da classe conforme o tribunal."""
+    if classe is None:
+        return None
+    sigla, sep, resto = classe.partition(" — ")
+    mapa = _CLASSES_TSE if (tribunal or "").upper() == "TSE" else _CLASSES_NAO_TSE
+    nova = mapa.get(sigla, sigla)
+    if nova == sigla:
+        return classe
+    return nova  # a sigla sem descrição é aceita pelo contrato final
 
 
 def normalizar(texto: str) -> str:

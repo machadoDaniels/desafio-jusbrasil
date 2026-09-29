@@ -36,6 +36,18 @@ class CabecalhoTest(unittest.TestCase):
         self.assertEqual(chaves["numero_registro_tribunal"], "201601234567")
         self.assertEqual(chaves["uf"], "PR")
 
+    def test_stj_numero_curto(self) -> None:
+        chaves = _chaves("STJ", "QO na CAUTELAR INOMINADA CRIMINAL Nº 87 - DF (2022/0187319-4) RELATORA : MINISTRA FULANA")
+        self.assertEqual(chaves["numero_classe_tribunal"], "87")
+        self.assertEqual(chaves["numero_registro_tribunal"], "202201873194")
+        self.assertEqual(chaves["uf"], "DF")
+
+    def test_classe_eleitoral_so_no_tse(self) -> None:
+        self.assertEqual(cabecalho.classe_coerente_com_tribunal("REspe — Recurso Especial Eleitoral", "STJ"), "REsp")
+        self.assertEqual(cabecalho.classe_coerente_com_tribunal("REsp — Recurso Especial", "TSE"), "REspe")
+        self.assertEqual(cabecalho.classe_coerente_com_tribunal("AgInt — Agravo Interno", "STJ"), "AgInt — Agravo Interno")
+        self.assertIsNone(cabecalho.classe_coerente_com_tribunal(None, "STJ"))
+
     def test_stm_cnj_e_uf_no_sufixo(self) -> None:
         texto = "Poder Judiciário STM EXTRATO DE ATA APELAÇÃO CRIMINAL Nº 7000123-45.2021.7.00.0000/AM RELATOR: MINISTRO FULANO"
         chaves = _chaves("STM", texto)

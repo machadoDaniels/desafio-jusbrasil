@@ -370,7 +370,17 @@ async def _enriquecer_hibrido(
             }
             if dados.get("uf") is None:
                 dados["uf"] = parsed.uf
-            campos = _MetadadosAcordaoAgente.model_validate(dados)
+            dados["classe_processual"] = cabecalho.classe_coerente_com_tribunal(
+                dados.get("classe_processual"), documento.tribunal
+            )
+            if dados.get("cadeia_recursal"):
+                dados["cadeia_recursal"] = list(
+                    dict.fromkeys(
+                        cabecalho.classe_coerente_com_tribunal(item, documento.tribunal)
+                        for item in dados["cadeia_recursal"]
+                    )
+                )
+            campos = MetadadosAcordao.model_validate(dados)
             resultado = DocumentoEnriquecido(
                 documento_id=documento.documento_id,
                 id=documento.id,
