@@ -38,10 +38,13 @@ def _entrada_agente(
     *,
     janela: str | None = None,
     chaves: Mapping[str, Any] | None = None,
+    confianca: Mapping[str, Any] | None = None,
 ) -> dict[str, Any]:
     entrada = {"tribunal": documento.tribunal}
     if chaves is not None:
         entrada["chaves_do_cabecalho"] = dict(chaves)
+    if confianca is not None:
+        entrada["confianca_do_cabecalho"] = dict(confianca)
     if janela is not None:
         texto = janela
     elif text_start_char_limit is None and text_end_char_limit is None:
@@ -70,6 +73,7 @@ def _requisicao(
     *,
     janela: str | None = None,
     chaves: Mapping[str, Any] | None = None,
+    confianca: Mapping[str, Any] | None = None,
     prompt: str | None = None,
     exemplos_chave: str | None = None,
 ) -> dict[str, Any]:
@@ -85,6 +89,7 @@ def _requisicao(
             config["text_end_char_limit"],
             janela=janela,
             chaves=chaves,
+            confianca=confianca,
         ),
         ensure_ascii=False,
     )
@@ -302,6 +307,96 @@ def _parametros_auditoria(config: Mapping[str, Any]) -> dict[str, Any]:
     }
 
 
+async def _chamar_modelo(
+    documento: DocumentoFonte,
+    requisicao: dict[str, Any],
+    *,
+    cliente: AsyncOpenAI,
+    config: Mapping[str, Any],
+    semaforo: asyncio.Semaphore,
+    montar: Any,
+) -> tuple[DocumentoEnriquecido, Any, int]:
+    """Chama o modelo com repetições; ``montar(parsed)`` converte a resposta em resultado."""
+    ultimo_erro: Exception | None = None
+    for tentativa in range(1, config["max_retries"] + 1):
+        try:
+            async with semaforo:
+                resposta = await cliente.chat.completions.parse(**requisicao)
+            parsed = resposta.choices[0].message.parsed
+            if parsed is None:
+                raise ValueError("o modelo não retornou uma resposta estruturada")
+            return montar(parsed), resposta, tentativa
+        except (ValidationError, ValueError, IndexError, AttributeError) as erro:
+            ultimo_erro = erro
+            requisicao["messages"].append(
+                {
+                    "role": "user",
+                    "content": (
+                        "A resposta anterior foi inválida. Corrija sem inventar dados: "
+                        f"{str(erro)[:2000]}"
+                    ),
+                }
+            )
+        except OpenAIError as erro:
+            ultimo_erro = erro
+        _LOG.info(
+            "documento %s: tentativa %d/%d falhou: %s",
+            documento.documento_id,
+            tentativa,
+            config["max_retries"],
+            ultimo_erro,
+        )
+        if tentativa < config["max_retries"]:
+            await asyncio.sleep(config["retry_delay_seconds"] * tentativa)
+    assert ultimo_erro is not None
+    raise RuntimeError(
+        f"{documento.documento_id}: retries esgotados: {ultimo_erro}"
+    ) from ultimo_erro
+
+
+def _fundir_chaves(
+    resposta_modelo: Mapping[str, Any],
+    chaves: Mapping[str, Any],
+    confianca: Mapping[str, str | None],
+) -> dict[str, Any]:
+    """Chave do cabeçalho com confiança alta prevalece; com confiança média, só preenche vazio."""
+    dados = dict(resposta_modelo)
+    for campo in cabecalho.CHAVES_ACORDAO:
+        valor = chaves.get(campo)
+        if valor is None:
+            continue
+        if confianca.get(campo) == cabecalho.ALTA or dados.get(campo) is None:
+            dados[campo] = valor
+    return dados
+
+
+def _sanear_cnj_do_modelo(dados: dict[str, Any], texto: str = "") -> None:
+    """Recompõe o CNJ devolvido pelo modelo no fallback antes da validação.
+
+    Zeros a mais à esquerda (21-22 dígitos) são recompostos para 20 dígitos. Se o resultado
+    não passa no dígito verificador e o texto traz um único CNJ bem formado que passa, esse
+    candidato prevalece: o modelo reconstruindo um cabeçalho com OCR quebrado erra a posição
+    dos zeros com frequência. Sem isso um único CNJ mal preenchido esgota as repetições e
+    manda o documento para revisão, o que impede a materialização do banco inteiro.
+    """
+    cnj = dados.get("numero_processo_cnj")
+    if cnj and len(cnj) != 20:
+        digitos = cnj.lstrip("0")
+        cnj = digitos.zfill(20) if 0 < len(digitos) <= 20 else None
+    if cnj is not None and not cabecalho.cnj_valido(cnj):
+        candidato = normalizar_numero_cnj(None, texto)
+        if candidato and cabecalho.cnj_valido(candidato):
+            cnj = candidato
+    dados["numero_processo_cnj"] = cnj
+
+
+def _descartar_prefixo_de_cnj(dados: dict[str, Any]) -> None:
+    """No fallback o modelo repete o sequencial do CNJ ("Nº 487-26.2012...") como número de classe."""
+    cnj, numero = dados.get("numero_processo_cnj"), dados.get("numero_classe_tribunal")
+    if cnj and numero and cnj[:9].lstrip("0").startswith(numero.lstrip("0")):
+        dados["numero_classe_tribunal"] = None
+
+
 async def _enriquecer_hibrido(
     documento: DocumentoFonte,
     *,
@@ -309,11 +404,15 @@ async def _enriquecer_hibrido(
     config: Mapping[str, Any],
     semaforo: asyncio.Semaphore,
 ) -> tuple[DocumentoEnriquecido, dict[str, Any]]:
-    """Chaves de busca por cabeçalho; modelo somente para classe, cadeia e UF residual.
+    """Chaves de busca por cabeçalho em cascata; o modelo recebe o que a confiança pedir.
 
     Súmulas e dispositivos com cabeçalho regular nem chamam o modelo. Um acórdão sempre
-    chama, porque classe e cadeia recursal exigem leitura semântica; as chaves extraídas
-    por regra prevalecem sobre qualquer valor devolvido pelo modelo.
+    chama, porque classe e cadeia recursal exigem leitura semântica; o que muda com o nível
+    de confiança do cabeçalho é o contrato:
+      alta   o modelo devolve só classe, cadeia e UF residual; as chaves vêm do cabeçalho.
+      media  o modelo devolve o contrato completo e recebe as chaves como sugestão a
+             confirmar; a sugestão só entra onde o modelo devolveu nulo.
+      baixa  o modelo devolve o contrato completo sobre uma janela maior, sem sugestões.
     """
     if documento.natureza == "sumula":
         campos = cabecalho.campos_sumula(documento)
@@ -346,85 +445,79 @@ async def _enriquecer_hibrido(
         documento,
         janela_chars=config.get("janela_cabecalho_chars") or cabecalho.JANELA_CABECALHO_PADRAO,
         janela_tst_chars=config.get("janela_tst_chars") or cabecalho.JANELA_TST_PADRAO,
+        janela_fallback_chars=(
+            config.get("janela_fallback_chars") or cabecalho.JANELA_FALLBACK_PADRAO
+        ),
     )
-    chaves = extraido["campos"]
-    prompt = config["prompts"].get("acordao_semantico") or config["prompts"]["acordao"]
+    chaves, confianca, nivel = extraido["campos"], extraido["confianca"], extraido["nivel"]
+    prompts = config["prompts"]
+    if nivel == cabecalho.ALTA:
+        contrato: type[Contract] = _MetadadosAcordaoSemantico
+        prompt = prompts.get("acordao_semantico") or prompts["acordao"]
+        exemplos_chave, fonte = "acordao_semantico", "cabecalho+modelo"
+        chaves_entrada: dict[str, Any] | None = dict(chaves)
+        confianca_entrada: dict[str, Any] | None = None
+    elif nivel == cabecalho.MEDIA:
+        contrato = _MetadadosAcordaoAgente
+        prompt = prompts.get("acordao_fallback") or prompts["acordao"]
+        exemplos_chave, fonte = "acordao", "cabecalho+modelo:fallback"
+        chaves_entrada = {campo: valor for campo, valor in chaves.items() if valor is not None}
+        confianca_entrada = {campo: confianca[campo] for campo in chaves_entrada}
+    else:
+        contrato = _MetadadosAcordaoAgente
+        prompt = prompts["acordao"]
+        exemplos_chave, fonte = "acordao", "modelo:fallback"
+        chaves_entrada = confianca_entrada = None
     requisicao = _requisicao(
         documento,
-        _MetadadosAcordaoSemantico,
+        contrato,
         config,
         janela=extraido["janela"],
-        chaves=chaves,
+        chaves=chaves_entrada,
+        confianca=confianca_entrada,
         prompt=prompt,
-        exemplos_chave="acordao_semantico",
+        exemplos_chave=exemplos_chave,
     )
-    ultimo_erro: Exception | None = None
-    for tentativa in range(1, config["max_retries"] + 1):
-        try:
-            async with semaforo:
-                resposta = await cliente.chat.completions.parse(**requisicao)
-            parsed = resposta.choices[0].message.parsed
-            if parsed is None:
-                raise ValueError("o modelo não retornou uma resposta estruturada")
-            dados = {
-                **parsed.model_dump(),
-                **{chave: valor for chave, valor in chaves.items() if valor is not None},
-            }
-            if dados.get("uf") is None:
-                dados["uf"] = parsed.uf
-            dados["classe_processual"] = cabecalho.classe_coerente_com_tribunal(
-                dados.get("classe_processual"), documento.tribunal
-            )
-            if dados.get("cadeia_recursal"):
-                dados["cadeia_recursal"] = list(
-                    dict.fromkeys(
-                        cabecalho.classe_coerente_com_tribunal(item, documento.tribunal)
-                        for item in dados["cadeia_recursal"]
-                    )
-                )
-            campos = MetadadosAcordao.model_validate(dados)
-            resultado = DocumentoEnriquecido(
-                documento_id=documento.documento_id,
-                id=documento.id,
-                natureza=documento.natureza,
-                campos=normalizar_campos(documento, campos),
-            )
-            usage = getattr(resposta, "usage", None)
-            return resultado, {
-                "tentativa": tentativa,
-                "modelo": config["model"],
-                "fonte": "cabecalho+modelo",
-                "parametros": _parametros_auditoria(config),
-                "uso": usage.model_dump(mode="json") if usage is not None else None,
-                "input": _input_auditoria(requisicao, _MetadadosAcordaoSemantico),
-                "output": resposta.model_dump(
-                    mode="json",
-                    exclude={"choices": {"__all__": {"message": {"parsed"}}}},
-                ),
-            }
-        except (ValidationError, ValueError, IndexError, AttributeError) as erro:
-            ultimo_erro = erro
-            requisicao["messages"].append(
-                {
-                    "role": "user",
-                    "content": (
-                        "A resposta anterior foi inválida. Corrija sem inventar dados: "
-                        f"{str(erro)[:2000]}"
-                    ),
-                }
-            )
-        except OpenAIError as erro:
-            ultimo_erro = erro
-        _LOG.info(
-            "documento %s: tentativa %d/%d falhou: %s",
-            documento.documento_id,
-            tentativa,
-            config["max_retries"],
-            ultimo_erro,
+
+    def montar(parsed: Contract) -> DocumentoEnriquecido:
+        dados = _fundir_chaves(parsed.model_dump(), chaves, confianca)
+        if nivel != cabecalho.ALTA:
+            _sanear_cnj_do_modelo(dados, documento.texto)
+            _descartar_prefixo_de_cnj(dados)
+        dados["classe_processual"] = cabecalho.classe_coerente_com_tribunal(
+            dados.get("classe_processual"), documento.tribunal
         )
-        if tentativa < config["max_retries"]:
-            await asyncio.sleep(config["retry_delay_seconds"] * tentativa)
-    assert ultimo_erro is not None
-    raise RuntimeError(
-        f"{documento.documento_id}: retries esgotados: {ultimo_erro}"
-    ) from ultimo_erro
+        if dados.get("cadeia_recursal"):
+            dados["cadeia_recursal"] = list(
+                dict.fromkeys(
+                    cabecalho.classe_coerente_com_tribunal(item, documento.tribunal)
+                    for item in dados["cadeia_recursal"]
+                )
+            )
+        campos = MetadadosAcordao.model_validate(dados)
+        return DocumentoEnriquecido(
+            documento_id=documento.documento_id,
+            id=documento.id,
+            natureza=documento.natureza,
+            campos=normalizar_campos(documento, campos),
+        )
+
+    resultado, resposta, tentativa = await _chamar_modelo(
+        documento, requisicao, cliente=cliente, config=config, semaforo=semaforo, montar=montar
+    )
+    usage = getattr(resposta, "usage", None)
+    return resultado, {
+        "tentativa": tentativa,
+        "modelo": config["model"],
+        "fonte": fonte,
+        "nivel_cabecalho": nivel,
+        "confianca_chaves": dict(confianca),
+        "regras_cabecalho": list(extraido["regras"]),
+        "parametros": _parametros_auditoria(config),
+        "uso": usage.model_dump(mode="json") if usage is not None else None,
+        "input": _input_auditoria(requisicao, contrato),
+        "output": resposta.model_dump(
+            mode="json",
+            exclude={"choices": {"__all__": {"message": {"parsed"}}}},
+        ),
+    }

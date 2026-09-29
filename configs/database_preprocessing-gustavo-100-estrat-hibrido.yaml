@@ -75,6 +75,38 @@ database_preprocessing:
       - ano_diploma: o ano de quatro dígitos que encerra a data do título; para a Constituição, o ano que
         segue "Constituição Federal de".
       Não use conhecimento externo além dessa tabela; campos ausentes ficam nulos.
+    acordao_fallback: |-
+      CONTEXTO
+      Você enriquece a base canônica de acórdãos de um verificador de citações jurídicas. Cada valor que
+      você devolver vira uma coluna consultada por SQL exato: um dígito trocado ou um número no campo
+      errado faz uma citação verdadeira ser considerada inventada. Extraia somente o que está escrito no
+      documento; não use conhecimento externo e não invente valores. Campos ausentes ficam nulos.
+
+      Este documento não tem um cabeçalho no formato esperado do tribunal. Um parser por regra tentou
+      ler as chaves e devolveu apenas sugestões, em `chaves_do_cabecalho`, com a confiança de cada uma em
+      `confianca_do_cabecalho`. Confirme cada sugestão no texto: mantenha a que estiver escrita no
+      documento no campo certo, corrija a que estiver truncada ou no campo errado (por exemplo, um número
+      solto que na verdade é o início de um CNJ com a formatação quebrada) e descarte a que não encontrar.
+      Preencha os demais campos a partir do texto.
+
+      CAMPOS
+      - numero_processo_cnj: o número único nacional, formato NNNNNNN-DD.AAAA.J.TR.OOOO, devolvido com os
+        20 dígitos e zeros à esquerda. Somente o do processo julgado, normalmente o primeiro número do
+        cabeçalho, mesmo que o texto o traga com espaços, quebras de linha ou pontos fora do lugar. Números
+        de outros processos citados ("nos autos do processo n.", precedentes, processo de origem) não entram.
+      - numero_classe_tribunal: o número sequencial que acompanha a sigla da classe quando o tribunal usa
+        numeração própria ("<CLASSE> Nº 12.345"), somente dígitos. Nulo quando o processo é identificado
+        pelo CNJ.
+      - numero_registro_tribunal: exclusivamente um registro no formato AAAA/NNNNNNN-D, devolvido com os
+        12 dígitos. Nulo se não houver; nunca preenchido com CNJ, número de OAB ou data.
+      - classe_processual: a classe do processo-base, a última da cadeia. Em "X no Y" é Y; em "X no Y no Z"
+        é Z. Use uma das siglas permitidas; se nenhuma corresponder à classe escrita, null. Classes
+        eleitorais (REspe, AREspe) só existem na Justiça Eleitoral; RR e ARR só na Justiça do Trabalho.
+      - cadeia_recursal: todas as classes escritas no nome do processo, incluindo a principal, sem ordem e
+        sem repetição. Só o que está escrito; não deduza recursos que o texto não menciona.
+      - uf: sigla de dois caracteres do estado do processo, obtida do nome por extenso, do sufixo após o
+        número ou da comarca. Datas, números de OAB e nomes de cidade não são UF. Nula se o texto não
+        trouxer estado.
     acordao_semantico: |-
       CONTEXTO
       Você enriquece a base canônica de acórdãos de um verificador de citações jurídicas. As chaves de
@@ -87,6 +119,7 @@ database_preprocessing:
       - STF, STJ, STM e TSE: no nome do processo, no início do cabeçalho ("<CLASSE> Nº ..."), com os
         recursos incidentais encadeados por "no", "na", "nos" ("X no Y no Z").
       - TST: nas siglas do código "TST-<SIGLAS>-<número>", uma sigla por recurso, separadas por hífen.
+      - Outros tribunais: como no STJ, no nome do processo no início do cabeçalho.
 
       CAMPOS
       - classe_processual: a classe do processo-base, isto é, a última da cadeia. Em "X no Y" é Y; em
@@ -100,4 +133,5 @@ database_preprocessing:
   modo_chaves: hibrido
   janela_cabecalho_chars: 500
   janela_tst_chars: 1500
+  janela_fallback_chars: 3000
   few_shot_path: configs/few_shot_sintetico.json

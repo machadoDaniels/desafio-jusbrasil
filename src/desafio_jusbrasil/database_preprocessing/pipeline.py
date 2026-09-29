@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import logging
 import os
 from collections import Counter, defaultdict
 from collections.abc import Iterable, Mapping
@@ -19,6 +20,8 @@ from ..utils import normalizar_relator
 from .agent import enriquecer_documento
 from .contracts import DocumentoEnriquecido, DocumentoFonte, MetadadosAcordao
 from .database import listar_documentos, materializar_banco
+
+_LOG = logging.getLogger(__name__)
 
 
 def _escrever_json(caminho: Path, dados: BaseModel | dict[str, Any]) -> None:
@@ -60,6 +63,7 @@ def _checkpoint_reutilizavel(
         or parametros.get("modo_chaves", "modelo") != configuracao.get("modo_chaves", "modelo")
         or parametros.get("janela_cabecalho_chars") != configuracao.get("janela_cabecalho_chars")
         or parametros.get("janela_tst_chars") != configuracao.get("janela_tst_chars")
+        or parametros.get("janela_fallback_chars") != configuracao.get("janela_fallback_chars")
         or ("prompts" in parametros and parametros["prompts"] != configuracao["prompts"])
     ):
         return None
@@ -102,6 +106,31 @@ def _com_relator_norm(
             )
         }
     )
+
+
+def _cascata_cabecalho(
+    diretorio_auditoria: Path, documentos: Iterable[DocumentoFonte]
+) -> dict[str, dict[str, int]]:
+    """Quantos acórdãos de cada tribunal o cabeçalho resolveu em cada nível de confiança."""
+    totais: dict[str, Counter[str]] = defaultdict(Counter)
+    for documento in documentos:
+        if documento.natureza != "acordao":
+            continue
+        auditoria = diretorio_auditoria / "documentos" / documento.documento_id / "0001.json"
+        nivel = None
+        if auditoria.is_file():
+            nivel = json.loads(auditoria.read_text(encoding="utf-8")).get("nivel_cabecalho")
+        totais[documento.tribunal or "?"][nivel or "sem_cascata"] += 1
+    resumo = {tribunal: dict(contagens) for tribunal, contagens in sorted(totais.items())}
+    for tribunal, contagens in resumo.items():
+        total = sum(contagens.values())
+        fallback = contagens.get("media", 0) + contagens.get("baixa", 0)
+        if total and fallback / total > 0.2:
+            _LOG.warning(
+                "tribunal %s: %d/%d acórdãos sem chave forte no cabeçalho (fallback ao modelo)",
+                tribunal, fallback, total,
+            )
+    return resumo
 
 
 def _cobertura(
@@ -159,6 +188,7 @@ async def executar_async(
         "modo_chaves": configuracao.get("modo_chaves", "modelo"),
         "janela_cabecalho_chars": configuracao.get("janela_cabecalho_chars"),
         "janela_tst_chars": configuracao.get("janela_tst_chars"),
+        "janela_fallback_chars": configuracao.get("janela_fallback_chars"),
         "_few_shot": (
             json.loads(Path(configuracao["few_shot_path"]).read_text(encoding="utf-8"))
             if configuracao.get("few_shot_path")
@@ -286,6 +316,7 @@ async def executar_async(
         "invalidos": len(revisoes),
         "enviados_para_revisao": len(revisoes),
         "cobertura_por_natureza": _cobertura(resultados),
+        "cascata_cabecalho": _cascata_cabecalho(diretorio_auditoria, documentos),
         "materializacao": None,
     }
     if revisoes:
