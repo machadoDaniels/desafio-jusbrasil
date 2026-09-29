@@ -1,224 +1,214 @@
-# Desafio Jusbrasil BRACIS 2026
+# Jusbrasil BRACIS 2026 — pipeline v2
 
-Pipeline em quatro etapas para extrair e verificar citações jurídicas:
+V2 extracts legal citations from TXT documents, extracts their structured fields with parallel NER calls, and verifies them against a canonical SQLite database. It produces a final classification (`real`, `inventada`, or `incompleta`), a canonical ID for real citations, and an audit of the model calls and database queries.
 
-1. `extractor`: encontra citações e calcula os offsets localmente;
-2. `completeness`: aplica uma regra específica por tipo e retorna somente se a citação é completa;
-3. `entities`: extrai do trecho uma consulta estruturada alinhada ao banco enriquecido;
-4. `veracity`: consulta primeiro as colunas estruturadas e usa FTS5 como fallback determinístico.
+The implemented order is **Extraction → Completeness → NER → Veracity**. The proposed **Extraction → NER → Sufficiency and recovery → Veracity** design is documented in [v3_suggestion.md](v3_suggestion.md); expansion and recovery are not implemented in v2.
 
-## Configuração
+## How v2 works
 
-Toda a execução é configurada em [`pipeline.yaml`](pipeline.yaml). Cada etapa possui configuração independente de modelo, amostragem e concorrência.
-
-```yaml
-extractor:
-  model: google/gemma-4-26B-A4B-it
-  base_url: http://HOST:PORT/v1
-  temperature: null
-  top_p: null
-  top_k: null
-  reasoning_effort: null
-  async_requests: true
-  max_concurrency: 10
-  debug: false
+```mermaid
+flowchart LR
+    A[Original TXT] --> B[1. Extraction: LLM + local span matching]
+    B --> C[2. Completeness: LLM]
+    C --> D[3. NER: parallel field extractors]
+    D --> E[4. Veracity: deterministic SQLite queries]
+    E --> F[Predictions and evaluation reports]
 ```
 
-Todos os modelos são acessados por APIs OpenAI-compatible. Para vLLM, Ollama ou um gateway compatível, configure `base_url`; `null` usa o endpoint padrão da OpenAI.
+### 1. Extraction
 
-### Modelo atual
+The LLM returns citation text, type, and confidence. Python calculates offsets; the model does not generate them.
 
-O exemplo usa `google/gemma-4-26B-A4B-it`, um modelo mixture-of-experts com 26 bilhões de parâmetros totais e cerca de 4 bilhões ativos por token. O endpoint configurado atualmente anuncia `max_model_len: 32768` em `/v1/models`. O pipeline usa saída estruturada e, opcionalmente, reasoning.
+The extractor first searches for the returned text literally. If that fails, it tries whitespace-normalized matching and maps the result back to the original document. A located citation stores the original slice `texto[inicio:fim]`, preserving its formatting. Offsets are Unicode character positions with an exclusive end.
 
-O limite de 32.768 tokens é do servidor atual, não uma garantia portátil do modelo. Ele pode mudar conforme os argumentos usados para iniciar o vLLM e a memória disponível.
+Oversized documents are split into overlapping chunks with token budgets and capacity-error handling. Chunk offsets are translated to document offsets, and duplicate spans are merged. See [extraction limits and chunking](docs/extraction-limits.md).
 
-### Credencial
+With `extractor.debug: true`, unlocated candidates remain in checkpoints with null offsets. Otherwise, they are discarded. Unlocated candidates never enter the final submission. Normalizing whitespace does not repair every change to a number: removing a line break entirely can still prevent matching.
 
-A chave é lida exclusivamente da variável `OPENAI_API_KEY`. Copie `.env.example` para `.env` e configure a chave quando necessário:
+### 2. Completeness
+
+An LLM returns only `completa: true` or `false`, using the citation and nearby context. It does not query the database or decide whether a citation is invented.
+
+The current prompts require a searchable numbered reference for jurisprudence and a numbered provision plus an identifiable legal instrument for legislation. Context may join parts of the same reference but must not supply identifiers from a different citation.
+
+This is a limitation of v2: references containing only court, year, and judge are marked incomplete before attempting a database search. The broader task definition also allows searchable but ambiguous references; v3 proposes moving this decision after NER and adding the corresponding search strategies.
+
+### 3. Parallel NER
+
+Every citation reaches NER, including those marked incomplete. Each extractor receives the original citation text and returns only its assigned fields. All calls use the configured entity model; they run independently within a shared concurrency limit.
+
+| Extractor | Fields |
+| --- | --- |
+| Nature | `natureza`, `numero_sumula`, `sumula_vinculante` |
+| Identifiers | `numero_processo_cnj`, `numero_classe_tribunal`, `numero_registro_tribunal` |
+| Process class | `classe_processual`, `cadeia_recursal` |
+| Court | `tribunal` |
+| State | `uf` |
+| Year | `ano` |
+| Judge | `relator` |
+| Legal instrument and article | `diploma`, `numero_artigo` |
+| Legal instrument number | `numero_diploma` |
+
+Jurisprudence uses the first seven extractors; legislation uses the last two. The coordinator merges their fields and applies deterministic normalization, including CNJ handling and judge-name normalization into `relator_norm`.
+
+Each system prompt contains shared evidence rules, field-specific instructions, synthetic examples, and the response JSON schema. Allowed values, including all 27 UF codes, come from the Python contracts and are explicitly included in that schema. Additional synthetic evaluation cases are kept outside the prompts.
+
+`entities.max_concurrency` limits active LLM requests across the coordinator. Each response is capped at 512 tokens. Failed requests are retried and audited; they are not silently converted into empty fields. See [parallel entity extraction](docs/parallel-entity-extraction.md).
+
+### 4. Veracity
+
+The standard verifier uses parameterized, read-only SQLite queries against structured columns. It does not call an LLM and has no automatic FTS fallback. A separate `4_veracity_fts` module exists as an alternative implementation.
+
+| Condition | Current result |
+| --- | --- |
+| `completa: false`, or entity output unavailable | Skip lookup and return `incompleta`. |
+| Extracted fields cannot form a supported query | Return `incompleta`. |
+| Supported query finds no matching record | Return `inventada`. |
+| One canonical record matches | Return `real` with its canonical ID. |
+| Multiple records remain after supported disambiguation | Return `incompleta`. |
+
+A complete citation can still be invented. Conversely, a citation may be incomplete because it lacks query information or because its query remains ambiguous. In v2, NER calls are still spent on citations whose completeness decision will prevent a lookup.
+
+## Setup and configuration
+
+Use Python 3.12 or newer and install the project dependencies:
 
 ```bash
+uv sync
 cp .env.example .env
 ```
 
-Mesmo um endpoint local sem autenticação pode exigir um valor não vazio por compatibilidade com o SDK:
+Set `OPENAI_API_KEY` in the environment or `.env`. For a compatible endpoint that does not require authentication, the SDK still needs a nonempty placeholder such as `EMPTY`. Do not commit real credentials.
 
-```dotenv
-OPENAI_API_KEY=dummy
-```
+Copy and edit [configs/pipeline.yaml](configs/pipeline.yaml) for a run. Set:
 
-Não versione o arquivo `.env`.
+- `input_dir`: original TXT documents.
+- `workdir`: a fresh output directory.
+- `database`: the enriched reference database.
+- `model` and `base_url` for extraction, completeness, and entities: values supported by your inference endpoint.
+- Sampling, concurrency, and retry settings for each model stage.
 
-## Parâmetros do modelo
+Paths are resolved from the working directory, so run the commands below from the project root. Pass `--config` explicitly; the stage CLIs otherwise default to a root-level `pipeline.yaml`.
 
-| Campo | Padrão no código | Valores aceitos | Comportamento |
-|---|---:|---|---|
-| `model` | obrigatório | identificador textual | Deve coincidir com o ID publicado pelo servidor, por exemplo `google/gemma-4-26B-A4B-it`. |
-| `base_url` | `null` | URL ou `null` | Para vLLM: `http://HOST:PORT/v1`. Para Ollama: `http://127.0.0.1:11434/v1`. `null` usa o endpoint padrão do cliente. |
-| `temperature` | `null` | `0.0` a `2.0`, ou `null` | Controla aleatoriedade. `null` omite o parâmetro e preserva o default do servidor/modelo. |
-| `top_p` | `null` | `0.0` a `1.0`, ou `null` | Amostragem nucleus. `null` omite o parâmetro. Em geral, ajuste `temperature` **ou** `top_p`, não ambos. |
-| `top_k` | `null` | inteiro `>= 1`, ou `null` | Enviado ao vLLM dentro de `extra_body`. Quando `null`, `extra_body` não é enviado. |
-| `reasoning_effort` | `null` | `none`, `minimal`, `low`, `medium`, `high`, `xhigh`, `max`, ou `null` | O suporte efetivo depende do provedor, da versão do servidor e do modelo. Para Gemma 4 no vLLM, prefira `none`, `low`, `medium` ou `high`. |
-| `async_requests` | `false` | `true`, `false` | Habilita chamadas concorrentes quando a etapa é executada isoladamente. O orquestrador completo continua síncrono. |
-| `max_concurrency` | `4` | inteiro `>= 1` | Número máximo de chamadas simultâneas nas execuções assíncronas. Não altera o batching interno do servidor vLLM. |
-| `debug` | `false` | `true`, `false` | Na extração, preserva em `candidatos` as respostas sem correspondência textual, usando offsets nulos. Nas demais etapas, é apenas registrado no manifesto. |
+| Setting | Behavior |
+| --- | --- |
+| `temperature`, `top_p`, `top_k`, `reasoning_effort` | Null omits the corresponding setting and uses the server default. Support depends on the endpoint. |
+| `async_requests` | Enables concurrent extraction/completeness when using their standalone stage CLIs. |
+| `max_concurrency` | Limits concurrent work; for NER, the shared runner limits individual LLM requests. |
+| `entities.max_retries` | Maximum application attempts per extractor call. |
+| `entities.request_timeout_seconds` | Per-attempt timeout, excluding time waiting for a concurrency slot. |
+| `extractor.debug` | Keeps unlocated candidates in intermediate checkpoints when true. |
+| `extractor.context_window_tokens`, `max_output_tokens`, `token_margin` | Control the extraction input/output budget. |
+| `extractor.chunk_overlap_chars` | Adds shared context between extraction chunks. |
+| `extractor.tokenizer_path` | Optional tokenizer endpoint; otherwise extraction uses a conservative byte-based estimate. |
 
-`null` não significa enviar JSON `null`. Nas chamadas diretas, o pipeline usa `openai.omit` para `temperature`, `top_p` e `reasoning_effort`; para `top_k`, ele remove completamente `extra_body`. Assim, o servidor aplica seus próprios defaults.
+The entity coordinator loads `relatores_padronizacao.json` from the database's parent directory. Keep the matching dictionary beside the selected database.
 
-Os defaults efetivos de amostragem do vLLM podem variar conforme sua versão, argumentos de inicialização, `generation_config.json` do modelo e chat template. Para execuções reproduzíveis, informe explicitamente os parâmetros desejados.
+## Run the pipeline
 
-### Reasoning e `enable_thinking` no Gemma 4
-
-No vLLM atual, não é necessário enviar simultaneamente `reasoning_effort` e `chat_template_kwargs.enable_thinking` para o Gemma 4. O servidor faz a conversão automaticamente:
-
-| Configuração da requisição | Resultado no chat template |
-|---|---|
-| `reasoning_effort: low`, `medium` ou `high` | injeta `enable_thinking: true` |
-| `reasoning_effort: none` | injeta `enable_thinking: false` |
-| `reasoning_effort: null` | não injeta `enable_thinking`; preserva o comportamento configurado no servidor |
-
-Para o Gemma 4, thinking é desativado por padrão, salvo se o servidor tiver sido iniciado com outro default. Portanto:
-
-```yaml
-# Reasoning desativado explicitamente
-reasoning_effort: none
-
-# Reasoning ativado
-reasoning_effort: medium
-
-# Não interferir; usar o default do servidor
-reasoning_effort: null
-```
-
-Para este pipeline, uma configuração inicial razoável é manter reasoning desativado na extração e na completude, habilitando-o primeiro apenas na veracidade caso a melhoria de qualidade compense o aumento de latência e tokens.
-
-O servidor vLLM também precisa estar configurado com o reasoning parser apropriado para separar reasoning e resposta final. Exemplo conceitual:
+The full entry point executes all four stages and exports predictions:
 
 ```bash
-vllm serve google/gemma-4-26B-A4B-it \
-  --reasoning-parser gemma4 \
-  --host 0.0.0.0 \
-  --port 8000
+uv run desafio-jusbrasil --config configs/pipeline.yaml
 ```
 
-Um `enable_thinking` explícito em `chat_template_kwargs` prevalece sobre a ativação automática, mas o pipeline não o expõe porque seria redundante para o uso normal com `reasoning_effort`.
-
-Referências:
-
-- [vLLM — Reasoning Outputs](https://docs.vllm.ai/en/latest/features/reasoning_outputs/)
-- [vLLM — Gemma 4 Usage Guide](https://docs.vllm.ai/projects/recipes/en/stable/Google/Gemma4.html)
-
-## Execução
-
-Pipeline completo, síncrono entre etapas:
+The current orchestrator calls extraction and completeness synchronously and NER asynchronously. To use the configured asynchronous modes for the first two stages, run the standalone commands in order:
 
 ```bash
-uv run desafio-jusbrasil
+uv run python -m desafio_jusbrasil.1_extractor --config configs/pipeline.yaml
+uv run python -m desafio_jusbrasil.2_completeness --config configs/pipeline.yaml
+uv run python -m desafio_jusbrasil.3_entities --config configs/pipeline.yaml
+uv run python -m desafio_jusbrasil.4_veracity --config configs/pipeline.yaml
 ```
 
-Etapas isoladas:
+Each stage consumes the preceding stage's saved checkpoints. Use a fresh `workdir` for each experiment. The last command also exports final prediction JSON files.
+
+Database enrichment is a separate preparation step, configured in [configs/database_preprocessing.yaml](configs/database_preprocessing.yaml):
 
 ```bash
-uv run python -m desafio_jusbrasil.1_extractor
-uv run python -m desafio_jusbrasil.2_completeness
-uv run python -m desafio_jusbrasil.3_entities
-uv run python -m desafio_jusbrasil.4_veracity
+uv run python -m desafio_jusbrasil.database_preprocessing --config configs/database_preprocessing.yaml
 ```
 
-A etapa 4 possui duas alternativas independentes, ambas consumindo `03-entities` e gerando `04-veracity`:
+## Evaluate and generate readable reports
+
+Generate local stage references from the published development annotations:
 
 ```bash
-# Busca somente pelas colunas estruturadas
-uv run python -m desafio_jusbrasil.4_veracity
-
-# Busca somente pelo índice FTS5
-uv run python -m desafio_jusbrasil.4_veracity_fts
+uv run scripts/generate_stage_golds.py --output outputs/gold
 ```
 
-Todos os comandos aceitam um YAML alternativo, mantendo `pipeline.yaml` como padrão:
+Entity references also use local normalization and reviewed overrides; they are development annotations, not an independent official entity benchmark. See [gold rules](docs/gold-rules.md).
+
+Evaluate a saved run, replacing `outputs/my-run` with its work directory:
 
 ```bash
-uv run desafio-jusbrasil --config pipeline-alternativo.yaml
-uv run python -m desafio_jusbrasil.3_entities --config pipeline-alternativo.yaml
+uv run scripts/evaluate_extraction.py outputs/my-run --gold outputs/gold
+uv run scripts/evaluate_completeness.py outputs/my-run --gold outputs/gold
+uv run scripts/evaluate_entities.py outputs/my-run --gold outputs/gold
+uv run scripts/evaluate_veracity.py outputs/my-run --gold outputs/gold
+uv run scripts/clear_outputs.py outputs/my-run --gold outputs/gold
 ```
 
-Extração e completude respeitam `async_requests`. `3_entities` usa somente chamadas assíncronas; `4_veracity` é determinística e não chama modelo. A ordem dos documentos e candidatos é preservada na saída.
-
-### Pré-processamento do banco canônico
-
-Para gerar uma cópia enriquecida sem alterar o SQLite original:
-
-```bash
-uv run python -m desafio_jusbrasil.database_preprocessing
-uv run python -m desafio_jusbrasil.database_preprocessing --config configs/database_preprocessing-alternativo.yaml
-```
-
-Entrada, saída, diretório de auditoria, substituição do destino, parâmetros do agente e os prompts de sistema por natureza (`prompts`) ficam na seção `database_preprocessing` de `configs/database_preprocessing.yaml`. Para testar outro prompt, copie esse arquivo em `configs/` e passe com `--config`. O campo opcional `few_shot_path` aponta para um JSON com exemplos por natureza (`{"acordao": [{"entrada": ..., "saida": ...}]}`), enviados como pares usuário/assistente antes do documento; veja `configs/database_preprocessing_fewshot.yaml`, que usa `configs/few_shot_database_preprocessing.json`. Mudar os prompts invalida os checkpoints do `audit_dir`. Origem e destino nunca podem ser o mesmo arquivo. O processo não modifica a tabela FTS existente.
-
-O run completo só materializa o banco se nenhum documento ficar em revisão. Para materializar com os resultados que já existem no `audit_dir`, sem chamar o modelo, use `--materializar`: documentos sem `resultado.json` ficam com as colunas novas nulas e são listados em `relatorio_materializacao.json`.
-
-```bash
-uv run python -m desafio_jusbrasil.database_preprocessing --materializar
-```
-
-Com `extrair_verbatim: true` na config, o agente também devolve, antes dos campos normalizados, o trecho literal do texto que sustenta cada campo. Os trechos ficam em `trechos` no `resultado.json` e não entram no banco. Para convertê-los em offsets do texto original:
-
-```bash
-uv run python scripts/gerar_spans_database_preprocessing.py outputs/database-preprocessing/<run>
-```
-
-O script grava `spans.jsonl` na pasta da run e imprime a taxa de trechos localizados por campo.
-
-Para comparar uma run com o gold padrão `outputs/database-preprocessing/run-gemini-gold`:
-
-```bash
-uv run python scripts/evaluate_database_preprocessing.py \
-  outputs/database-preprocessing/run-005
-```
-
-O relatório é salvo como `avaliacao.json` dentro da run avaliada. Use `--gold CAMINHO` para outra referência.
-
-## Checkpoints e auditoria
-
-Cada etapa grava um JSON por documento. A completude usa prompts separados para jurisprudência e legislação, retorna apenas `completa` e salva cada documento independentemente; resultados concluídos permanecem no disco mesmo se uma requisição posterior falhar. Em `03-entities`, o modelo recebe o trecho original de todas as citações, inclusive as incompletas, e extrai os campos totais ou parciais de busca; números processuais, natureza, súmula vinculante e relator normalizado recebem pós-processamento determinístico. `04-veracity` não chama LLM: consulta primeiro as colunas estruturadas do banco enriquecido e usa FTS5 como fallback, sempre em conexão SQLite somente leitura.
+The report generator reads saved results without model calls. It creates:
 
 ```text
-outputs/<run>/01-extraction/<documento_id>/resultado.json
-outputs/<run>/01-extraction/<documento_id>/0001.json
-outputs/<run>/02-completeness/<documento_id>/resultado.json
-outputs/<run>/02-completeness/<documento_id>/0001.json
-outputs/<run>/03-entities/<documento_id>/resultado.json
-outputs/<run>/03-entities/<documento_id>/0001.json
-outputs/<run>/04-veracity/<documento_id>/resultado.json
-outputs/<run>/04-veracity/<documento_id>/0001.json
-outputs/<run>/predictions/<documento_id>.json
+outputs/clear_outputs/<date-and-time>/
+├── README.md
+├── metrics_summary.md
+├── citation_errors.md
+├── manifest.json
+└── <document_id>/
+    ├── <document_id>.txt
+    └── evaluation.md
 ```
 
-A extração primeiro procura o trecho literalmente; se isso falhar, tenta novamente tratando sequências de espaços, tabs e quebras de linha como equivalentes. Quando essa segunda busca encontra o trecho, os offsets são convertidos de volta para o texto original e `trecho` preserva inclusive suas quebras de linha.
+`metrics_summary.md` starts with overall and per-stage processing times, followed by All/N1/N2 precision, recall, and F1 tables, strict overall correctness, and one NER field table with hits such as `100% (91/91)`. `citation_errors.md` lists each affected citation with the observed stage errors and expected/extracted values.
 
-O agente de entidades não recebe tools e não escreve SQL. Ele extrai campos estruturados de processo, súmula ou legislação. A etapa de veracidade transforma esses campos em uma consulta parametrizada e classifica o resultado: zero registros como `inventada`, um como `real` e mais de um como `incompleta`.
+Timing is read from an existing `experiment.json`; ordinary stage commands do not automatically create this timing file. Missing timings are N/A. Concurrent request durations are never summed as elapsed time.
 
-Com `extractor.debug: true`, candidatos ainda não localizados são preservados com `inicio` e `fim` iguais a `null`. Com o padrão `false`, eles não aparecem na lista processada de `candidatos`. Em ambos os modos, a resposta integral do modelo permanece nos arquivos numerados da pasta do documento para auditoria. Candidatos sem offsets nunca entram em `predictions`, pois a submissão exige posições numéricas.
+For experiments supplied with gold upstream checkpoints, declare that provenance explicitly, for example `--gold-supplied-stage 02-completeness`. Such stages are excluded from model scores, and strict overall is unavailable. See [readable report details](docs/clear-outputs.md).
 
-Cada pasta de documento contém `resultado.json`, usado como checkpoint pela etapa seguinte, e arquivos numerados de auditoria. O checkpoint não duplica as chamadas nem o texto original; a completude relê o TXT de `input_dir` para montar o contexto. Em `03-entities`, cada arquivo numerado contém os campos extraídos e, ao final, `input` e `output` da chamada. Em `04-veracity`, cada arquivo numerado contém os campos recebidos, o SQL parametrizado, seus parâmetros, os registros e o resultado da classificação.
-
-Credenciais nunca são incluídas nesses arquivos.
-
-Cada diretório de etapa também contém `manifest.json`, que registra:
-
-- etapa;
-- data e hora UTC;
-- formato do checkpoint;
-- provider, modelo e endpoint;
-- hiperparâmetros;
-- modo assíncrono e concorrência.
-
-Os avaliadores ignoram automaticamente o `manifest.json`.
-
-Para avaliar as entidades estruturadas contra o gold:
+Create a local submission CSV and calculate the separate official competition metric:
 
 ```bash
-uv run python scripts/evaluate_entities.py outputs/<run> \
-  --gold outputs/gold/03-entities
+uv run python scripts/json_to_submission.py outputs/my-run/predictions outputs/my-run/submission.csv
+uv run python scripts/evaluate.py outputs/my-run/submission.csv
 ```
 
-O avaliador gera `03-entities/avaliacao.json`, um `resultado_eval.json` por documento e métricas de consulta exata por tipo, nível e campo. Em `cadeia_recursal`, a comparação ignora ordem e repetições.
+These commands create and score local files; they do not submit anything to Kaggle.
+
+## V2 development results
+
+The full run on 2026-09-28 processed all 26 original documents through all four stages. It used `google/gemma-4-12B-it-qat-w4a16-ct`, concurrency 8, entity temperature 0, and `data/desafio1_bracis_enriched_gold.db`. Extraction and completeness retained server sampling defaults. This database and entity temperature differ from the editable defaults in `configs/pipeline.yaml`.
+
+| Step | Precision | Recall | F1 | Wall time |
+| --- | ---: | ---: | ---: | ---: |
+| Extraction | 98.96% | 99.48% | 99.22% | 24.73 s |
+| Completeness | 96.89% | 97.40% | 97.14% | 11.22 s |
+| Entities | 94.30% | 94.79% | 94.55% | 56.12 s |
+| Veracity | 94.82% | 95.31% | 95.06% | 1.33 s |
+| Overall, strict | 91.19% | 91.67% | 91.43% | 93.41 s |
+
+Strict overall requires the same citation to pass every stage, including citation type. Its F1 was 98.99% for N1 and 83.42% for N2. The run produced 194 candidates, of which 193 had located spans; matching found 191 of 192 reference citations. There were 19 citation error entries.
+
+The official competition score was 1.023337 under its separate class/level weighting and calibration bonus, which can produce scores above 1. It is not strict overall F1.
+
+The prompts use synthetic demonstrations, but both the corpus and synthetic evaluations informed prompt development. These numbers are development results, not an unseen-data benchmark. See [the full v2 evaluation](reports/full-pipeline-v2-20260928.md) and [NER prompt development](reports/ner-prompt-improvement-20260928.md). Detailed run artifacts under `outputs/` are local and excluded from Git.
+
+## Checkpoints and audits
+
+Each stage writes `<stage>/<document_id>/resultado.json` and numbered audit files. Intermediate stage directories are `01-extraction`, `02-completeness`, `03-entities`, and `04-veracity`; final JSON files are in `predictions/`.
+
+NER audits identify the field extractor, citation, request, response, attempt, start time, duration, and queue time. Verification audits record the structured fields, SQL, parameters, matched records, and classification. Stage manifests record configuration. Evaluators ignore manifests and numbered audit files.
+
+## Tests and known limitations
+
+Run the local unit tests without inference:
+
+```bash
+uv run python -m unittest discover -s tests -v
+```
+
+The v2 check ran 68 tests: 63 passed, with five pre-existing failures/errors in database-preprocessing configuration/schema expectations and legacy FTS verifier tests. The added extraction, parallel NER, synthetic-example, and reporting regressions passed. The real full-run stage scores and all 14 NER field counts were also checked against the saved evaluators.
+
+V2 does not repair fragmented citations, expand spans, or search jurisprudence using court/year/judge alone. The next design addresses these limitations through bounded re-extraction and NER recovery, with containment and neighboring-reference checks: [v3 proposal](v3_suggestion.md).

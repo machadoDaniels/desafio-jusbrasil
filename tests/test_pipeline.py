@@ -46,7 +46,6 @@ AgenteCompletude = _completeness.AgenteCompletude
 executar_completude = _completeness.executar_completude
 executar_completude_async = _completeness.executar_completude_async
 AgenteExtratorEntidades = _entities.AgenteExtratorEntidades
-_prompt_veracidade = _entities._prompt_veracidade
 executar_entities_async = _entities.executar_entities_async
 VerificadorVeracidade = _veracity.VerificadorVeracidade
 executar_veracidade = _veracity.executar_veracidade
@@ -60,7 +59,7 @@ class ExtratorFake:
     def extrair_auditada(
         self,
         texto: str,
-    ) -> tuple[list[CandidatoCitacao], dict]:
+    ) -> tuple[list[CandidatoCitacao], list[dict]]:
         trecho = "art. 373 do CPC"
         inicio = texto.index(trecho)
         return [
@@ -71,14 +70,14 @@ class ExtratorFake:
                 inicio=inicio,
                 fim=inicio + len(trecho),
             )
-        ], _auditoria_fake()
+        ], [_auditoria_fake()]
 
 
 class ExtratorAsyncFake:
     async def extrair_auditada_async(
         self,
         texto: str,
-    ) -> tuple[list[CandidatoCitacao], dict]:
+    ) -> tuple[list[CandidatoCitacao], list[dict]]:
         return ExtratorFake().extrair_auditada(texto)
 
 
@@ -360,26 +359,7 @@ class PipelineTest(unittest.TestCase):
         self.assertNotEqual(prompt_lei, prompt_jurisprudencia)
         self.assertEqual(set(ResultadoCompletude.model_fields), {"completa"})
 
-    def test_veracidade_recebe_trecho_e_tipo_do_extractor(self) -> None:
-        candidato = CandidatoCitacao(
-            trecho="Súmula 331 do TST",
-            tipo=TipoCitacao.JURISPRUDENCIA,
-        )
-        mensagens = AgenteExtratorEntidades._mensagens(candidato)
-        self.assertIn(candidato.trecho, mensagens[1]["content"])
-        self.assertIn(
-            "EDcl no AgInt no Agravo em Recurso Especial", mensagens[0]["content"]
-        )
-        self.assertIn(
-            '"classe_processual": "AREsp — Agravo em Recurso Especial"',
-            mensagens[0]["content"],
-        )
-        prompt_lei = AgenteExtratorEntidades._mensagens(
-            CandidatoCitacao(
-                trecho="art. 1.134 da Lei nº 13.105/2015", tipo=TipoCitacao.LEI
-            )
-        )[0]["content"]
-        self.assertIn("CPC — Código de Processo Civil", prompt_lei)
+    def test_entity_output_contract_fields(self) -> None:
         schema_jurisprudencia = ConsultaJurisprudencia.model_json_schema()["properties"]
         self.assertEqual(
             schema_jurisprudencia["numero_classe_tribunal"]["examples"],
@@ -388,10 +368,6 @@ class PipelineTest(unittest.TestCase):
         self.assertEqual(
             schema_jurisprudencia["numero_registro_tribunal"]["examples"],
             ["202201873194", "201801163041"],
-        )
-        self.assertNotEqual(
-            _prompt_veracidade(TipoCitacao.JURISPRUDENCIA),
-            _prompt_veracidade(TipoCitacao.LEI),
         )
         self.assertEqual(
             set(ConsultaJurisprudencia.model_fields),
