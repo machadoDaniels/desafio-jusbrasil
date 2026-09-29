@@ -3,7 +3,7 @@ database_preprocessing:
   output: data/desafio1_bracis_enriched_gemma4-12b.db
   audit_dir: outputs/database-preprocessing/exp-gemma4-12b
   model: google/gemma-4-12B-it-qat-w4a16-ct
-  base_url:  http://10.100.20.114:8412/v1
+  base_url: http://10.100.20.114:8412/v1
   api_key: $GEMMA_API_KEY
   temperature: null
   top_p: null
@@ -15,21 +15,64 @@ database_preprocessing:
   request_timeout_seconds: 120
   text_start_char_limit: 10000
   text_end_char_limit: 2000
-
   prompts:
     acordao: |-
-      Extraia somente metadados jurídicos explicitamente sustentados pelo documento.
-      Não use conhecimento externo e não invente valores. Extraia separadamente o CNJ do processo
-      julgado, o número sequencial junto da classe do tribunal e o número de registro do tribunal;
-      não use CNJ de processo apenas mencionado. Retorne números somente com algarismos. Extraia a
-      classe principal, todas as classes da cadeia recursal e a UF. A cadeia não tem ordem nem
-      repetições. Campos ausentes devem ser nulos.
+      CONTEXTO
+      Você enriquece a base canônica de acórdãos de um verificador de citações jurídicas. Cada valor que
+      você devolver vira uma coluna consultada por SQL exato: um dígito trocado ou um número no campo
+      errado faz uma citação verdadeira ser considerada inventada. Extraia somente o que está escrito no
+      documento; não use conhecimento externo e não invente valores. Campos ausentes ficam nulos.
+
+      O DOCUMENTO
+      Você recebe o tribunal, o ano e o texto do acórdão. As chaves de identificação ficam no cabeçalho,
+      nas primeiras linhas, num formato estável por tribunal:
+      - STF: "<data> <turma> <CLASSE> <número> <ESTADO por extenso> RELATOR : ...". O número que segue a
+        classe é o numero_classe_tribunal. O cabeçalho não traz CNJ do próprio processo.
+      - STJ: "<CLASSE> Nº <número> - <UF> (<AAAA/NNNNNNN-D>) RELATOR : ...". O número após "Nº" é o
+        numero_classe_tribunal; o que está entre parênteses é o numero_registro_tribunal. Sem CNJ próprio.
+      - STM: "<CLASSE> Nº <CNJ>/<UF> RELATOR: ...". O CNJ é o do próprio processo.
+      - TSE: "<CLASSE> Nº <CNJ> - <CIDADE> - <ESTADO por extenso> Relator: ...". Em acórdãos antigos o
+        formato é "Nº <número> (<CNJ>)": o número antes dos parênteses é o numero_classe_tribunal.
+      - TST: não há cabeçalho. O processo aparece como "TST-<SIGLAS>-<CNJ>" no corpo e no rodapé; as siglas
+        entre "TST-" e o número são a cadeia recursal.
+
+      CAMPOS
+      - numero_processo_cnj: o número único nacional, formato NNNNNNN-DD.AAAA.J.TR.OOOO, devolvido com os
+        20 dígitos e zeros à esquerda. Somente o do processo julgado. Números de outros processos citados no
+        texto ("nos autos do processo n.", precedentes, processo de origem) não entram aqui. Nulo quando o
+        cabeçalho não o traz, como no STF e no STJ.
+      - numero_classe_tribunal: o número sequencial que acompanha a sigla da classe nas numerações próprias
+        do STF e do STJ, somente dígitos, sem pontos. Nulo nos tribunais que identificam o processo só pelo CNJ.
+      - numero_registro_tribunal: exclusivamente o registro do STJ no formato AAAA/NNNNNNN-D, devolvido com
+        os 12 dígitos. Nulo em qualquer outro tribunal; nunca preenchido com CNJ, número de OAB ou data.
+      - classe_processual: a classe do processo-base, a última da cadeia. Em "X no Y" é Y; em "X no Y no Z"
+        é Z. Use uma das siglas permitidas. Classes eleitorais (REspe, AREspe) só existem no TSE; RR e ARR
+        só no TST.
+      - cadeia_recursal: todas as classes escritas no nome do processo, incluindo a principal, sem ordem e
+        sem repetição. Só o que está escrito; não deduza recursos que o texto não menciona.
+      - uf: sigla de dois caracteres do estado do processo, obtida do nome por extenso ou do sufixo após o
+        número. Datas, números de OAB e nomes de cidade não são UF. Nula se o cabeçalho não trouxer estado.
     sumula: |-
-      Extraia somente os metadados explicitamente sustentados pela súmula. Não use
-      conhecimento externo e não invente valores. Informe o número da súmula e se ela é vinculante;
-      use nulo quando o documento não sustentar o campo.
+      Você enriquece a base canônica de súmulas de um verificador de citações jurídicas. O título traz
+      "Súmula n. <N> do <TRIBUNAL>" ou "Súmula Vinculante n. <N> do STF".
+      - numero_sumula: o inteiro N, sem prefixo, pontuação ou texto adicional.
+      - sumula_vinculante: true apenas quando a palavra "Vinculante" acompanha o título, o que só ocorre
+        em súmulas do STF; false nas demais, inclusive súmulas comuns do próprio STF.
+      Não use conhecimento externo; use nulo quando o texto não sustentar o campo.
     dispositivo: |-
-      Extraia somente os metadados legislativos explicitamente sustentados pelo
-      dispositivo. Não use conhecimento externo e não invente valores. Normalize o diploma para o
-      vocabulário permitido e retorne números de diploma somente com algarismos. Preserve sufixos
-      alfanuméricos do artigo. Campos ausentes devem ser nulos.
+      Você enriquece a base canônica de dispositivos de lei de um verificador de citações jurídicas. O
+      título tem o formato "Artigo <N> d[oa] <DIPLOMA> nº <X>, de <data por extenso>" ou
+      "Artigo <N> da Constituição Federal de <AAAA>".
+      - numero_artigo: o identificador que segue "Artigo", como escrito, preservando ordinal e sufixos.
+      - diploma: um dos valores permitidos. Os códigos são reconhecidos pela lei que os instituiu:
+        Lei 10.406 → Código Civil; Lei 8.078 → Código de Defesa do Consumidor; Lei 13.105 → Código de
+        Processo Civil; Decreto-Lei 3.689 → Código de Processo Penal; Decreto-Lei 1.001 → Código Penal
+        Militar; Lei 4.737 → Código Eleitoral; Decreto-Lei 5.452 → Consolidação das Leis do Trabalho.
+        "Lei Complementar" quando o título disser Lei Complementar; "Lei" somente para uma lei que não
+        seja nenhum desses códigos.
+      - numero_diploma: o número da norma, somente dígitos, sem pontos. Nunca o ano. Nulo para a
+        Constituição Federal.
+      - ano_diploma: o ano de quatro dígitos que encerra a data do título; para a Constituição, o ano que
+        segue "Constituição Federal de".
+      Não use conhecimento externo além dessa tabela; campos ausentes ficam nulos.
+  few_shot_path: configs/few_shot_sintetico.json

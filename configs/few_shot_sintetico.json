@@ -1,0 +1,233 @@
+{
+  "acordao": [
+    {
+      "documento_id": "sintetico_stf_agrg_rcl",
+      "entrada": {
+        "tribunal": "STF",
+        "ano": 2025,
+        "texto": "03/06/2025 SEGUNDA TURMA AG.REG. NA RECLAMAÇÃO 71.480 PARANÁ RELATOR : MIN. NOME SOBRENOME AGTE.(S) : EMPRESA EXEMPLO LTDA ADV.(A/S) : ADVOGADO EXEMPLO AGDO.(A/S) : PESSOA EXEMPLO INTDO.(A/S) : TRIBUNAL REGIONAL DO TRABALHO DA 9ª REGIÃO EMENTA: AGRAVO REGIMENTAL EM RECLAMAÇÃO. ..."
+      },
+      "saida": {
+        "numero_processo_cnj": null,
+        "numero_classe_tribunal": "71480",
+        "numero_registro_tribunal": null,
+        "classe_processual": "Rcl — Reclamação",
+        "cadeia_recursal": [
+          "AgRg — Agravo Regimental",
+          "Rcl — Reclamação"
+        ],
+        "uf": "PR"
+      }
+    },
+    {
+      "documento_id": "sintetico_stj_agint_resp",
+      "entrada": {
+        "tribunal": "STJ",
+        "ano": 2023,
+        "texto": "AgInt no RECURSO ESPECIAL Nº 2.031.577 - MG (2022/0312345-0) RELATOR : MINISTRO NOME SOBRENOME AGRAVANTE : ESTADO DE MINAS GERAIS PROCURADOR : PROCURADOR EXEMPLO - MG012345 AGRAVADO : PESSOA EXEMPLO ADVOGADO : ADVOGADO EXEMPLO - MG098765 EMENTA PROCESSUAL CIVIL. AGRAVO INTERNO NO RECURSO ESPECIAL. ..."
+      },
+      "saida": {
+        "numero_processo_cnj": null,
+        "numero_classe_tribunal": "2031577",
+        "numero_registro_tribunal": "202203123450",
+        "classe_processual": "REsp — Recurso Especial",
+        "cadeia_recursal": [
+          "AgInt — Agravo Interno",
+          "REsp — Recurso Especial"
+        ],
+        "uf": "MG"
+      }
+    },
+    {
+      "documento_id": "sintetico_stm_apl",
+      "entrada": {
+        "tribunal": "STM",
+        "ano": 2025,
+        "texto": "Poder Judiciário STM EXTRATO DE ATA DA SESSÃO VIRTUAL DE 10/03/2025 A 12/03/2025 APELAÇÃO CRIMINAL Nº 7000318-22.2024.7.00.0000/PE RELATOR: MINISTRO NOME SOBRENOME REVISOR: MINISTRO OUTRO NOME APELANTE: MINISTÉRIO PÚBLICO MILITAR APELADO: PESSOA EXEMPLO ..."
+      },
+      "saida": {
+        "numero_processo_cnj": "70003182220247000000",
+        "numero_classe_tribunal": null,
+        "numero_registro_tribunal": null,
+        "classe_processual": "APL — Apelação",
+        "cadeia_recursal": [
+          "APL — Apelação"
+        ],
+        "uf": "PE"
+      }
+    },
+    {
+      "documento_id": "sintetico_tse_agrg_respe",
+      "entrada": {
+        "tribunal": "TSE",
+        "ano": 2021,
+        "texto": "TRIBUNAL SUPERIOR ELEITORAL ACÓRDÃO AGRAVO REGIMENTAL NO RECURSO ESPECIAL ELEITORAL Nº 0600412-33.2020.6.13.0102 - UBERABA - MINAS GERAIS Relator: Ministro Nome Sobrenome Agravante: Coligação Exemplo Advogados: Advogado Exemplo - OAB: 12345/MG e outros Agravado: Ministério Público Eleitoral ..."
+      },
+      "saida": {
+        "numero_processo_cnj": "06004123320206130102",
+        "numero_classe_tribunal": null,
+        "numero_registro_tribunal": null,
+        "classe_processual": "REspe — Recurso Especial Eleitoral",
+        "cadeia_recursal": [
+          "AgRg — Agravo Regimental",
+          "REspe — Recurso Especial Eleitoral"
+        ],
+        "uf": "MG"
+      }
+    },
+    {
+      "documento_id": "sintetico_tst_ed_rr",
+      "entrada": {
+        "tribunal": "TST",
+        "ano": 2022,
+        "texto": "A C Ó R D Ã O (3ª Turma) GMXX/ab/cd EMBARGOS DE DECLARAÇÃO. RECURSO DE REVISTA. HORAS EXTRAS. OMISSÃO INEXISTENTE. Não há omissão a sanar. Embargos de declaração rejeitados. Vistos, relatados e discutidos estes autos de Embargos de Declaração em Recurso de Revista nº TST-ED-RR-1587-44.2019.5.09.0021, em que é Embargante EMPRESA EXEMPLO S.A. e Embargado PESSOA EXEMPLO. ... PROCESSO Nº TST-ED-RR-1587-44.2019.5.09.0021 Firmado por assinatura digital"
+      },
+      "saida": {
+        "numero_processo_cnj": "00015874420195090021",
+        "numero_classe_tribunal": null,
+        "numero_registro_tribunal": null,
+        "classe_processual": "RR — Recurso de Revista",
+        "cadeia_recursal": [
+          "EDcl — Embargos de Declaração",
+          "RR — Recurso de Revista"
+        ],
+        "uf": "PR"
+      }
+    }
+  ],
+  "acordao_semantico": [
+    {
+      "documento_id": "sintetico_sem_stj",
+      "entrada": {
+        "tribunal": "STJ",
+        "chaves_do_cabecalho": {
+          "numero_processo_cnj": null,
+          "numero_classe_tribunal": "2031577",
+          "numero_registro_tribunal": "202203123450",
+          "uf": "MG"
+        },
+        "ano": 2023,
+        "texto": "AgInt no RECURSO ESPECIAL Nº 2.031.577 - MG (2022/0312345-0) RELATOR : MINISTRO NOME SOBRENOME AGRAVANTE : ESTADO DE MINAS GERAIS AGRAVADO : PESSOA EXEMPLO EMENTA PROCESSUAL CIVIL. AGRAVO INTERNO NO RECURSO ESPECIAL. ..."
+      },
+      "saida": {
+        "classe_processual": "REsp — Recurso Especial",
+        "cadeia_recursal": [
+          "AgInt — Agravo Interno",
+          "REsp — Recurso Especial"
+        ],
+        "uf": null
+      }
+    },
+    {
+      "documento_id": "sintetico_sem_stf",
+      "entrada": {
+        "tribunal": "STF",
+        "chaves_do_cabecalho": {
+          "numero_processo_cnj": null,
+          "numero_classe_tribunal": "71480",
+          "numero_registro_tribunal": null,
+          "uf": "PR"
+        },
+        "ano": 2025,
+        "texto": "03/06/2025 SEGUNDA TURMA EMB.DECL. NO AG.REG. NA RECLAMAÇÃO 71.480 PARANÁ RELATOR : MIN. NOME SOBRENOME EMBTE.(S) : EMPRESA EXEMPLO LTDA EMBDO.(A/S) : PESSOA EXEMPLO EMENTA: EMBARGOS DE DECLARAÇÃO NO AGRAVO REGIMENTAL NA RECLAMAÇÃO. ..."
+      },
+      "saida": {
+        "classe_processual": "Rcl — Reclamação",
+        "cadeia_recursal": [
+          "EDcl — Embargos de Declaração",
+          "AgRg — Agravo Regimental",
+          "Rcl — Reclamação"
+        ],
+        "uf": null
+      }
+    },
+    {
+      "documento_id": "sintetico_sem_tst",
+      "entrada": {
+        "tribunal": "TST",
+        "chaves_do_cabecalho": {
+          "numero_processo_cnj": "00015874420195090021",
+          "numero_classe_tribunal": null,
+          "numero_registro_tribunal": null,
+          "uf": "PR"
+        },
+        "ano": 2022,
+        "texto": "A C Ó R D Ã O SbDI-1 GMXX/ab EMBARGOS EM EMBARGOS DE DECLARAÇÃO EM RECURSO DE REVISTA. ... Vistos, relatados e discutidos estes autos de Embargos em Embargos de Declaração em Recurso de Revista nº TST-E-ED-RR-1587-44.2019.5.09.0021, em que é Embargante EMPRESA EXEMPLO S.A. ...\n[...]\n... Embargos em Embargos de Declaração em Recurso de Revista nº TST-E-ED-RR-1587-44.2019.5.09.0021, em que é Embargante ..."
+      },
+      "saida": {
+        "classe_processual": "RR — Recurso de Revista",
+        "cadeia_recursal": [
+          "E — Embargos",
+          "EDcl — Embargos de Declaração",
+          "RR — Recurso de Revista"
+        ],
+        "uf": null
+      }
+    }
+  ],
+  "sumula": [
+    {
+      "documento_id": "sintetico_sumula_stj",
+      "entrada": {
+        "tribunal": "STJ",
+        "texto": "Súmula n. 612 do STJ DIREITO PROCESSUAL CIVIL - EXEMPLO DE ENUNCIADO. O enunciado desta súmula trata de matéria processual civil. ..."
+      },
+      "saida": {
+        "numero_sumula": 612,
+        "sumula_vinculante": false
+      }
+    },
+    {
+      "documento_id": "sintetico_sumula_vinculante",
+      "entrada": {
+        "tribunal": "STF",
+        "texto": "Súmula Vinculante n. 57 do STF DIREITO CONSTITUCIONAL - EXEMPLO DE ENUNCIADO. O enunciado desta súmula vinculante trata de matéria constitucional. ..."
+      },
+      "saida": {
+        "numero_sumula": 57,
+        "sumula_vinculante": true
+      }
+    }
+  ],
+  "dispositivo": [
+    {
+      "documento_id": "sintetico_clt_468",
+      "entrada": {
+        "tribunal": null,
+        "texto": "Artigo 468 do Decreto-Lei nº 5.452, de 1º de maio de 1943 Art. 468 - Nos contratos individuais de trabalho só é lícita a alteração das respectivas condições por mútuo consentimento ..."
+      },
+      "saida": {
+        "diploma": "CLT — Consolidação das Leis do Trabalho",
+        "numero_diploma": "5452",
+        "ano_diploma": 1943,
+        "numero_artigo": "468"
+      }
+    },
+    {
+      "documento_id": "sintetico_cc_927",
+      "entrada": {
+        "tribunal": null,
+        "texto": "Artigo 927 da Lei nº 10.406, de 10 de janeiro de 2002 Art. 927. Aquele que, por ato ilícito, causar dano a outrem, fica obrigado a repará-lo. ..."
+      },
+      "saida": {
+        "diploma": "CC — Código Civil",
+        "numero_diploma": "10406",
+        "ano_diploma": 2002,
+        "numero_artigo": "927"
+      }
+    },
+    {
+      "documento_id": "sintetico_cf_37",
+      "entrada": {
+        "tribunal": null,
+        "texto": "Artigo 37 da Constituição Federal de 1988 Art. 37. A administração pública direta e indireta de qualquer dos Poderes da União, dos Estados, do Distrito Federal e dos Municípios obedecerá aos princípios ..."
+      },
+      "saida": {
+        "diploma": "CF — Constituição Federal",
+        "numero_diploma": null,
+        "ano_diploma": 1988,
+        "numero_artigo": "37"
+      }
+    }
+  ]
+}

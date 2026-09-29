@@ -71,6 +71,7 @@ def _requisicao(
     janela: str | None = None,
     chaves: Mapping[str, Any] | None = None,
     prompt: str | None = None,
+    exemplos_chave: str | None = None,
 ) -> dict[str, Any]:
     extra_body = {
         chave: config[chave]
@@ -88,7 +89,7 @@ def _requisicao(
         ensure_ascii=False,
     )
     prompt_sistema = prompt if prompt is not None else config["prompts"][documento.natureza]
-    exemplos = config.get("_few_shot", {}).get(documento.natureza, [])
+    exemplos = config.get("_few_shot", {}).get(exemplos_chave or documento.natureza, [])
     if config.get("nuextract_templates"):
         # NuExtract: template, instruções e exemplos vão pelo chat template.
         extra_body["chat_template_kwargs"] = {
@@ -355,6 +356,7 @@ async def _enriquecer_hibrido(
         janela=extraido["janela"],
         chaves=chaves,
         prompt=prompt,
+        exemplos_chave="acordao_semantico",
     )
     ultimo_erro: Exception | None = None
     for tentativa in range(1, config["max_retries"] + 1):
