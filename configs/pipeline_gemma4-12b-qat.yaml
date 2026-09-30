@@ -13,6 +13,8 @@ extractor:
   async_requests: true
   max_concurrency: 8
   debug: true
+  context_window_tokens: 32768
+  tokenizer_path: /tokenize
 
 completeness:
   model: google/gemma-4-12B-it-qat-w4a16-ct
