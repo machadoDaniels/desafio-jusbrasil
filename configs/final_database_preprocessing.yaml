@@ -1,20 +1,23 @@
 database_preprocessing:
+  # input, output e audit_dir são sobrescritos pelo run.sh (--input/--output/--audit-dir)
   input: desafio-jusbrasil-bracis-2026/desafio1_bracis.db
-  output: data/desafio1_bracis_enriched_gemma4-12b-h100.db
-  audit_dir: outputs/database-preprocessing/exp-gemma4-12b-h100
+  output: outputs/final/enriched.db
+  audit_dir: outputs/final/database-preprocessing
   model: google/gemma-4-12B-it-qat-w4a16-ct
-  base_url:  https://84a5-200-137-197-215.ngrok-free.app/v1
-  api_key: $GEMMA_API_KEY
-  temperature: null
+  base_url: http://127.0.0.1:8000/v1
+  api_key: null
+  temperature: 0
   top_p: null
   top_k: null
   reasoning_effort: null
   max_concurrency: 8
-  max_retries: 3
+  max_retries: 6
   retry_delay_seconds: 1
-  request_timeout_seconds: 40
+  request_timeout_seconds: 120
   text_start_char_limit: 10000
-  text_end_char_limit: 5000
+  text_end_char_limit: 2000
+  extrair_verbatim: false
+  few_shot_path: configs/few_shot_database_preprocessing.json
 
   prompts:
     acordao: |-

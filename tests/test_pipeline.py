@@ -39,6 +39,7 @@ _extractor = import_module("desafio_jusbrasil.1_extractor")
 _completeness = import_module("desafio_jusbrasil.2_completeness")
 _entities = import_module("desafio_jusbrasil.3_entities")
 _veracity = import_module("desafio_jusbrasil.4_veracity")
+_veracity_fts = import_module("desafio_jusbrasil.4_veracity_fts")
 AgenteExtrator = _extractor.AgenteExtrator
 executar_extracao = _extractor.executar_extracao
 executar_extracao_async = _extractor.executar_extracao_async
@@ -48,6 +49,7 @@ executar_completude_async = _completeness.executar_completude_async
 AgenteExtratorEntidades = _entities.AgenteExtratorEntidades
 executar_entities_async = _entities.executar_entities_async
 VerificadorVeracidade = _veracity.VerificadorVeracidade
+VerificadorVeracidadeFts = _veracity_fts.VerificadorVeracidadeFts
 executar_veracidade = _veracity.executar_veracidade
 
 
@@ -507,8 +509,7 @@ class PipelineTest(unittest.TestCase):
                     """
                 )
 
-            verificador = object.__new__(VerificadorVeracidade)
-            verificador._database = banco
+            verificador = VerificadorVeracidadeFts(banco)
             consulta = ConsultaJurisprudencia(
                 natureza="acordao",
                 numero_classe_tribunal="1996496",
@@ -590,7 +591,7 @@ class PipelineTest(unittest.TestCase):
 
     def test_veracidade_deriva_termos_dos_campos_juridicos(self) -> None:
         self.assertEqual(
-            VerificadorVeracidade._valores_fts(
+            _veracity_fts.valores_fts(
                 ConsultaJurisprudencia(
                     natureza="sumula",
                     numero_sumula=10,
@@ -600,7 +601,7 @@ class PipelineTest(unittest.TestCase):
             ["sumula", "vinculante", "10"],
         )
         self.assertEqual(
-            VerificadorVeracidade._valores_fts(
+            _veracity_fts.valores_fts(
                 ConsultaLegislacao(
                     numero_artigo="373",
                     diploma="Código de Processo Civil",
@@ -610,11 +611,11 @@ class PipelineTest(unittest.TestCase):
             ["Artigo 373", "13 105"],
         )
         self.assertEqual(
-            VerificadorVeracidade._normalizar_numero("AgInt no REsp 21737l8-SP"),
+            _veracity_fts.normalizar_numero("AgInt no REsp 21737l8-SP"),
             "2 173 718",
         )
         self.assertEqual(
-            VerificadorVeracidade._normalizar_numero("7000553-0320217000000"),
+            _veracity_fts.normalizar_numero("7000553-0320217000000"),
             "7000553 03 2021 7 00 0000",
         )
 

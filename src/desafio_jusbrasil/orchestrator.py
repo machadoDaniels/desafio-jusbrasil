@@ -73,9 +73,11 @@ class Orquestrador:
         materializar(veracidade, workdir / "predictions")
 
 
-async def _main(caminho_configuracao: Path) -> None:
+async def _main(caminho_configuracao: Path, substituicoes: dict[str, Path]) -> None:
     load_dotenv()
-    config = PipelineConfig.from_yaml(caminho_configuracao)
+    config = PipelineConfig.from_yaml(caminho_configuracao).model_copy(
+        update=substituicoes
+    )
     escrever_manifesto_etapa(
         config.workdir / "01-extraction", "extractor", config.extractor
     )
@@ -107,8 +109,20 @@ async def _main(caminho_configuracao: Path) -> None:
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--config", type=Path, default=Path("pipeline.yaml"))
+    parser.add_argument("--input-dir", type=Path, help="substitui input_dir do YAML")
+    parser.add_argument("--workdir", type=Path, help="substitui workdir do YAML")
+    parser.add_argument("--database", type=Path, help="substitui database do YAML")
     args = parser.parse_args()
-    asyncio.run(_main(args.config))
+    substituicoes = {
+        chave: valor
+        for chave, valor in (
+            ("input_dir", args.input_dir),
+            ("workdir", args.workdir),
+            ("database", args.database),
+        )
+        if valor is not None
+    }
+    asyncio.run(_main(args.config, substituicoes))
 
 
 if __name__ == "__main__":

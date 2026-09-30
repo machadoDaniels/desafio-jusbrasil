@@ -2,9 +2,9 @@ database_preprocessing:
   input: desafio-jusbrasil-bracis-2026/desafio1_bracis.db
   output: data/desafio1_bracis_enriched_gemma4-12b-fp8.db
   audit_dir: outputs/database-preprocessing/exp-gemma4-12b-fp8
-  model: google/gemma-4-12B-it-qat-w4a16-ct
-  base_url: https://84a5-200-137-197-215.ngrok-free.app/v1
-  api_key: $GEMMA_API_KEY
+  model: RedHatAI/gemma-4-12B-it-FP8-Dynamic
+  base_url: http://10.100.0.112:8456/v1
+  api_key: null
   temperature: null
   top_p: null
   top_k: null

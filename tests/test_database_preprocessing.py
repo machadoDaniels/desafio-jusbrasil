@@ -14,13 +14,19 @@ from pydantic import ValidationError
 
 from desafio_jusbrasil.database_preprocessing import (
     DocumentoEnriquecido,
+    DocumentoFonte,
     MetadadosAcordao,
     MetadadosDispositivo,
     MetadadosSumula,
+    agent,
     database,
     pipeline,
 )
 from desafio_jusbrasil.database_preprocessing import __main__ as cli
+from desafio_jusbrasil.database_preprocessing.contracts import (
+    _MetadadosAcordaoAgente,
+    _MetadadosDispositivoAgente,
+)
 from desafio_jusbrasil.utils import normalizar_relator
 
 
@@ -133,6 +139,53 @@ class _ClienteFake:
 
 
 class DatabasePreprocessingTest(unittest.TestCase):
+    def test_texto_enviado_ao_agente_respeita_limite(self) -> None:
+        documento = DocumentoFonte(
+            documento_id="doc",
+            id=1,
+            natureza="acordao",
+            texto="abcdefghij",
+        )
+        entrada = agent._entrada_agente(
+            documento,
+            text_start_char_limit=3,
+            text_end_char_limit=2,
+        )
+        self.assertEqual(entrada["texto"], "abcij")
+        self.assertEqual(
+            agent._entrada_agente(
+                documento,
+                text_start_char_limit=10,
+                text_end_char_limit=10,
+            )["texto"],
+            "abcdefghij",
+        )
+        self.assertEqual(
+            agent._entrada_agente(
+                documento,
+                text_start_char_limit=None,
+                text_end_char_limit=None,
+            )["texto"],
+            "abcdefghij",
+        )
+        self.assertEqual(
+            agent._entrada_agente(
+                documento,
+                text_start_char_limit=3,
+                text_end_char_limit=None,
+            )["texto"],
+            "abc",
+        )
+        self.assertEqual(
+            agent._entrada_agente(
+                documento,
+                text_start_char_limit=None,
+                text_end_char_limit=2,
+            )["texto"],
+            "ij",
+        )
+        self.assertEqual(documento.texto, "abcdefghij")
+
     def test_contratos_dos_tres_tipos(self) -> None:
         acordao = MetadadosAcordao(
             numero_processo_cnj=_cnj_valido(),
@@ -170,17 +223,35 @@ class DatabasePreprocessingTest(unittest.TestCase):
         )
         self.assertEqual(acordao_com_repeticao.classe_processual, "REsp")
         self.assertEqual(acordao_com_repeticao.cadeia_recursal, ["REsp", "AgInt"])
-        with self.assertRaisesRegex(ValidationError, "pertencer à cadeia"):
+        self.assertEqual(
             MetadadosAcordao(
-                numero_classe_tribunal="1234",
-                classe_processual="REsp",
-                cadeia_recursal=["AgInt"],
-            )
+                classe_processual="REsp", cadeia_recursal=["AgInt"]
+            ).cadeia_recursal,
+            ["AgInt", "REsp"],
+        )
+        self.assertEqual(
+            MetadadosAcordao(classe_processual="HC").cadeia_recursal, ["HC"]
+        )
+        self.assertIsNone(MetadadosAcordao().cadeia_recursal)
+        self.assertIsNone(MetadadosAcordao(cadeia_recursal=[]).cadeia_recursal)
+
+    def test_nomes_completos_do_agente_viram_siglas(self) -> None:
+        acordao = MetadadosAcordao(
+            classe_processual="AgInt — Agravo Interno",
+            cadeia_recursal=["REsp — Recurso Especial"],
+        )
+        self.assertEqual(acordao.classe_processual, "AgInt")
+        self.assertEqual(acordao.cadeia_recursal, ["REsp", "AgInt"])
+        self.assertEqual(
+            MetadadosDispositivo(diploma="CLT — Consolidação das Leis do Trabalho").diploma,
+            "Consolidação das Leis do Trabalho",
+        )
+        self.assertEqual(MetadadosDispositivo(diploma="Lei").diploma, "Lei")
 
     def test_schema_expoe_descricoes_semanticas_ao_modelo(self) -> None:
-        schema_acordao = MetadadosAcordao.model_json_schema()
+        schema_acordao = _MetadadosAcordaoAgente.model_json_schema()
         schema_sumula = MetadadosSumula.model_json_schema()
-        schema_dispositivo = MetadadosDispositivo.model_json_schema()
+        schema_dispositivo = _MetadadosDispositivoAgente.model_json_schema()
         self.assertIn(
             "20 dígitos",
             schema_acordao["properties"]["numero_processo_cnj"]["description"],
@@ -338,6 +409,13 @@ class DatabasePreprocessingTest(unittest.TestCase):
                 "max_concurrency": 2,
                 "max_retries": 1,
                 "retry_delay_seconds": 0,
+                "text_start_char_limit": 10_000,
+                "text_end_char_limit": 10_000,
+                "prompts": {
+                    "acordao": "prompt acordao",
+                    "sumula": "prompt sumula",
+                    "dispositivo": "prompt dispositivo",
+                },
             }
             cliente = _ClienteFake()
             with patch.object(pipeline, "AsyncOpenAI", return_value=cliente):
