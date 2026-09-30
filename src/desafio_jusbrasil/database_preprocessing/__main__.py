@@ -28,9 +28,19 @@ def main() -> None:
         action="store_true",
         help="só materializa o banco com os resultados do audit_dir, sem chamar o modelo",
     )
+    parser.add_argument("--input", type=Path, help="substitui input do YAML")
+    parser.add_argument("--output", type=Path, help="substitui output do YAML")
+    parser.add_argument("--audit-dir", type=Path, help="substitui audit_dir do YAML")
     args = parser.parse_args()
     load_dotenv()
     configuracao = _carregar_configuracao(args.config)
+    for chave, valor in (
+        ("input", args.input),
+        ("output", args.output),
+        ("audit_dir", args.audit_dir),
+    ):
+        if valor is not None:
+            configuracao[chave] = str(valor)
     origem = Path(configuracao["input"]).resolve()
     destino = Path(configuracao["output"]).resolve()
     diretorio_auditoria = Path(configuracao["audit_dir"]).resolve()
