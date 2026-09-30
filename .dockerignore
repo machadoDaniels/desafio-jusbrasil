@@ -1,0 +1,13 @@
+.git
+.venv
+.env
+.ruff_cache
+.obsidian
+**/__pycache__
+outputs
+data
+desafio-jusbrasil-bracis-2026
+desafio-jusbrasil-bracis-2026.zip
+docs
+tests
+test.ipynb
