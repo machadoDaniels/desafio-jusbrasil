@@ -1,0 +1,66 @@
+[
+  {
+    "text": "Mandado de segurança 0078912-34.2021.4.03.9876.",
+    "expected": {
+      "numero_processo_cnj": "00789123420214039876",
+      "numero_classe_tribunal": null,
+      "numero_registro_tribunal": null
+    }
+  },
+  {
+    "text": "Processo CNJ 00789123420214039876.",
+    "expected": {
+      "numero_processo_cnj": "00789123420214039876",
+      "numero_classe_tribunal": null,
+      "numero_registro_tribunal": null
+    }
+  },
+  {
+    "text": "Autos 7654321-09.2020.1.12.\n3456.",
+    "expected": {
+      "numero_processo_cnj": "76543210920201123456",
+      "numero_classe_tribunal": null,
+      "numero_registro_tribunal": null
+    }
+  },
+  {
+    "text": "Reclamação Constitucional Rcl 68.244/SP, com referência ao art. 12.",
+    "expected": {
+      "numero_processo_cnj": null,
+      "numero_classe_tribunal": "68244",
+      "numero_registro_tribunal": null
+    }
+  },
+  {
+    "text": "EDcl no AgInt no AREsp 3.456.789/SC, registro 2022/0187319-4.",
+    "expected": {
+      "numero_processo_cnj": null,
+      "numero_classe_tribunal": "3456789",
+      "numero_registro_tribunal": "202201873194"
+    }
+  },
+  {
+    "text": "Registro administrativo judicial n. 2025/7654321-0.",
+    "expected": {
+      "numero_processo_cnj": null,
+      "numero_classe_tribunal": null,
+      "numero_registro_tribunal": "202576543210"
+    }
+  },
+  {
+    "text": "O agravo interno foi julgado por unanimidade; não foi informado o número do processo.",
+    "expected": {
+      "numero_processo_cnj": null,
+      "numero_classe_tribunal": null,
+      "numero_registro_tribunal": null
+    }
+  },
+  {
+    "text": "Súmula Vinculante 35, sem processo associado.",
+    "expected": {
+      "numero_processo_cnj": null,
+      "numero_classe_tribunal": null,
+      "numero_registro_tribunal": null
+    }
+  }
+]

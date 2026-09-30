@@ -1,0 +1,34 @@
+[
+  {
+    "text": "Apelação Cível 6140-BA, publicada no diário oficial.",
+    "expected": {"uf": "BA"}
+  },
+  {
+    "text": "No recurso 72913 / GO, foi mantida a sentença.",
+    "expected": {"uf": "GO"}
+  },
+  {
+    "text": "Mandado de Segurança 5602 (PI), com decisão unânime.",
+    "expected": {"uf": "PI"}
+  },
+  {
+    "text": "Recurso Ordinário 02841- RS, incluído em pauta.",
+    "expected": {"uf": "RS"}
+  },
+  {
+    "text": "RR 0000456-78.2025.5.03.0007, relatado pela Ministra fictícia Ana Prado.",
+    "expected": {"uf": null}
+  },
+  {
+    "text": "O processo 0009812-34.2022.8.16.0001 foi julgado pelo TJPR.",
+    "expected": {"uf": null}
+  },
+  {
+    "text": "Recurso 8720 decidido em Porto Claro por magistrado local.",
+    "expected": {"uf": null}
+  },
+  {
+    "text": "Apelação 2931, com menção incidental ao estado de Sergipe.",
+    "expected": {"uf": null}
+  }
+]

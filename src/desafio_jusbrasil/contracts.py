@@ -149,12 +149,26 @@ class StageConfig(ModelConfig):
     debug: bool = False
 
 
+class ExtractionConfig(StageConfig):
+    context_window_tokens: int = Field(default=16384, ge=1)
+    max_output_tokens: int = Field(default=4096, ge=1)
+    token_margin: int = Field(default=256, ge=0)
+    chunk_overlap_chars: int = Field(default=400, ge=0)
+    tokenizer_path: str | None = Field(default=None, pattern=r"^/[^?#]*$")
+
+    @model_validator(mode="after")
+    def validate_token_budget(self) -> ExtractionConfig:
+        if self.max_output_tokens + self.token_margin >= self.context_window_tokens:
+            raise ValueError("The context window must leave room for input tokens")
+        return self
+
+
 class PipelineConfig(Contract):
     input_dir: Path
     workdir: Path
     database: Path
     database_preprocessing: dict[str, Any] | None = None
-    extractor: StageConfig
+    extractor: ExtractionConfig
     completeness: StageConfig
     entities: StageConfig
 
@@ -459,14 +473,14 @@ class ExtratorCandidatos(Protocol):
     def extrair_auditada(
         self,
         texto: str,
-    ) -> tuple[list[CandidatoCitacao], dict[str, Any]]: ...
+    ) -> tuple[list[CandidatoCitacao], list[dict[str, Any]]]: ...
 
 
 class ExtratorCandidatosAsync(Protocol):
     async def extrair_auditada_async(
         self,
         texto: str,
-    ) -> tuple[list[CandidatoCitacao], dict[str, Any]]: ...
+    ) -> tuple[list[CandidatoCitacao], list[dict[str, Any]]]: ...
 
 
 class ClassificadorCompletude(Protocol):

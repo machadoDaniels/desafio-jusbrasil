@@ -4,12 +4,13 @@ from __future__ import annotations
 
 import argparse
 import asyncio
+import json
 import logging
 from pathlib import Path
 from typing import Any
 
 from dotenv import load_dotenv
-from openai import AsyncOpenAI, OpenAI, omit
+from openai import AsyncOpenAI, BadRequestError, LengthFinishReasonError, OpenAI, omit
 from openai.types.chat import ChatCompletionMessageParam
 from pydantic import ValidationError
 from tqdm import tqdm
@@ -18,21 +19,78 @@ from .contracts import (
     CandidatoCitacao,
     CandidatoCitacaoRequest,
     DocumentoExtraido,
+    ExtractionConfig,
     ExtratorCandidatos,
     ExtratorCandidatosAsync,
     LoteCandidatosRequest,
     PipelineConfig,
     StageConfig,
 )
-from .utils import criar_auditoria, escrever_manifesto_etapa, escrever_saida_documento
+from .utils import (
+    complementar_auditoria,
+    criar_auditoria,
+    criar_auditoria_erro,
+    escrever_manifesto_etapa,
+    escrever_saida_documento,
+)
 
 _MAX_RETRIES = 4
 _LOGGER = logging.getLogger(__name__)
 
-_SYSTEM_PROMPT = """Você extrai citações de documentos jurídicos brasileiros.
-Retorne todas as citações a jurisprudência, súmulas e dispositivos legais.
-Retorne somente o trecho literal verbatim(não remova nada, nem marcadores e formatação), o tipo e, opcionalmente, a confiança.
-Classifique como jurisprudencia ou lei. Em cada item, use exatamente o campo `tipo`, nunca `type`."""
+_SYSTEM_PROMPT = """Você extrai citações de fontes jurídicas de um documento em português do Brasil.
+
+CONTEXTO
+Você é a primeira etapa de um pipeline de verificação de citações jurídicas. Sua única tarefa é
+localizar e copiar os trechos. Etapas posteriores decidem se cada citação está completa, se existe
+na base e se é verdadeira. Se você omitir uma citação, as etapas seguintes nunca a verão.
+
+O QUE É CITAÇÃO
+1. Jurisprudência: acórdãos, decisões, recursos e reclamações identificados por classe e número
+   (ex.: "AgInt no AREsp nº 1.996.496/RJ", "RSE nº 7000592-58.2025.7.00.0000/DF", "Rcl 88.178/RS").
+2. Súmulas e temas: "Súmula 331 do TST", "Súmula Vinculante 10", "Tema 1.234 da repercussão geral".
+3. Dispositivos de lei com artigo numerado: "art. 373, I, do CPC", "artigo 5º, LV, da Constituição Federal".
+4. Referências descritivas a um julgado, MESMO SEM NÚMERO: tribunal, ano, classe ou relator
+   (ex.: "julgado do STF proferido em 2024 pela relatoria de Dias Toffoli",
+   "acórdão do STJ julgado em 2021 sob relatoria de Assusete Magalhães", "Rcl de 2021, Rel. Min. Rosa Weber").
+   Elas são citações e devem ser extraídas.
+
+O QUE NÃO É CITAÇÃO
+- Número dos autos do próprio documento no cabeçalho, protocolo, inscrição na OAB, "fls. 234/567", valor da causa.
+- Menção a um diploma sem dispositivo numerado. Diploma é o nome ou a sigla de uma norma:
+  Constituição Federal, CF, Código Civil, CC, Código de Processo Civil, CPC, Código Penal, CP,
+  Código de Processo Penal, CPP, Código Penal Militar, CPM, CLT, CDC, Código Eleitoral,
+  Lei nº 8.078/1990, Lei Complementar nº 64/1990, Decreto-Lei nº 5.452/1943.
+  O diploma só vira citação quando vem com o número do dispositivo: "art. 373", "artigo 5º",
+  "art. 1º, I, 'g'", "§ 2º do art. 14". Sem número, não extraia, mesmo que a frase contenha
+  a palavra "artigo", "dispositivo" ou "norma":
+    "o artigo correspondente do Código de Processo Civil"  → NÃO é citação
+    "a lei que disciplina a prescrição"                      → NÃO é citação
+    "nos termos da legislação de regência"                   → NÃO é citação
+    "conforme o CPC"                                          → NÃO é citação
+    "art. 373, I, do CPC"                                     → É citação
+- Não avalie se a citação existe, está correta ou faz sentido. Artigos inexistentes,
+  números errados e referências vagas a um julgado DEVEM ser extraídos; verificar é tarefa de outra etapa.
+  mesmo que o trecho citado seja obviamente inventado, cite-o da mesma forma que está no documento
+- Quando uma citação continua depois de uma quebra de linha o trecho inclui tudo até o fim do número.
+    
+LIMITES DO TRECHO
+- Inclua toda a cadeia de classes que antecede o número: "Terceiro AG.REG na Rcl nº 62.425/SP",
+  "ED no AgR no AREspEl 0601514-91.2020.6.05.0000", "Embargos de Declaração no Recurso em Mandado de Segurança nº 67.101/RJ".
+- Inclua a UF ou o sufixo quando fizer parte da referência ("/SP", "- PR", "(PE)").
+- Não inclua o texto ao redor ("conforme decidiu o", "nos termos do").
+
+CÓPIA LITERAL
+O texto pode ter erros de OCR e quebras de linha. Copie o trecho EXATAMENTE como está no documento,
+caractere por caractere, incluindo:
+- erros de OCR ("5úmula", "profcrido", "1.45g.779", "Fedcral"): NÃO corrija;
+- quebras de linha e espaços duplos no meio do número ("5.02.\n0251", "44-\n.921"): NÃO remova nem junte;
+- pontuação irregular ("7220273--23", "n°  2.467"): mantenha.
+Se você "limpar" o trecho, ele não será encontrado no documento e a citação será perdida.
+
+SAÍDA
+Um item por citação, na ordem em que aparecem, sem repetir. Campo `tipo`: "jurisprudencia" para
+itens 1, 2 e 4; "lei" para o item 3. Campo `confianca_extracao`: 1.0 quando a referência tem
+identificador numérico, mesmo com ruído de OCR; 0.9 quando é descritiva, sem número."""
 
 
 class AgenteExtrator:
@@ -44,7 +102,7 @@ class AgenteExtrator:
         config: StageConfig,
     ) -> None:
         self._cliente = cliente
-        self._config = config
+        self._config = ExtractionConfig.model_validate(config.model_dump())
 
     def extrair(self, texto: str) -> list[CandidatoCitacao]:
         return self.extrair_auditada(texto)[0]
@@ -52,11 +110,39 @@ class AgenteExtrator:
     def extrair_auditada(
         self,
         texto: str,
-    ) -> tuple[list[CandidatoCitacao], dict[str, Any]]:
+    ) -> tuple[list[CandidatoCitacao], list[dict[str, Any]]]:
         if not isinstance(self._cliente, OpenAI):
             raise TypeError("extrair() exige um cliente OpenAI síncrono")
-        candidatos, auditoria = self._consultar_modelo(texto)
-        return self._processar_candidatos(texto, candidatos), auditoria
+        pending = [(0, len(texto))]
+        candidates, audits = [], []
+        while pending:
+            start, end = pending.pop()
+            chunk = texto[start:end]
+            if self._config.tokenizer_path:
+                counted = self._cliente.post(
+                    self._tokenizer_url(),
+                    cast_to=dict,
+                    body={
+                        "model": self._config.model,
+                        "messages": self._mensagens(chunk),
+                    },
+                )
+            else:
+                counted = self._estimate_tokens(chunk)
+            if not self._fits(counted):
+                pending.extend(reversed(self._split_range(texto, start, end)))
+                continue
+            try:
+                extracted, audit = self._consultar_modelo(chunk)
+            except (BadRequestError, LengthFinishReasonError) as error:
+                self._record_split(error, chunk, start, end, audits)
+                pending.extend(reversed(self._split_range(texto, start, end)))
+                continue
+            candidates.extend(
+                self._chunk_candidates(chunk, extracted, start, end, len(texto))
+            )
+            audits.append(self._chunk_audit(audit, start, end, counted))
+        return self._merge_candidates(candidates), audits
 
     async def extrair_async(self, texto: str) -> list[CandidatoCitacao]:
         candidatos, _ = await self.extrair_auditada_async(texto)
@@ -65,11 +151,185 @@ class AgenteExtrator:
     async def extrair_auditada_async(
         self,
         texto: str,
-    ) -> tuple[list[CandidatoCitacao], dict[str, Any]]:
+    ) -> tuple[list[CandidatoCitacao], list[dict[str, Any]]]:
         if not isinstance(self._cliente, AsyncOpenAI):
             raise TypeError("extrair_async() exige um cliente AsyncOpenAI")
-        candidatos, auditoria = await self._consultar_modelo_async(texto)
-        return self._processar_candidatos(texto, candidatos), auditoria
+        pending = [(0, len(texto))]
+        candidates, audits = [], []
+        while pending:
+            start, end = pending.pop()
+            chunk = texto[start:end]
+            if self._config.tokenizer_path:
+                counted = await self._cliente.post(
+                    self._tokenizer_url(),
+                    cast_to=dict,
+                    body={
+                        "model": self._config.model,
+                        "messages": self._mensagens(chunk),
+                    },
+                )
+            else:
+                counted = self._estimate_tokens(chunk)
+            if not self._fits(counted):
+                pending.extend(reversed(self._split_range(texto, start, end)))
+                continue
+            try:
+                extracted, audit = await self._consultar_modelo_async(chunk)
+            except (BadRequestError, LengthFinishReasonError) as error:
+                self._record_split(error, chunk, start, end, audits)
+                pending.extend(reversed(self._split_range(texto, start, end)))
+                continue
+            candidates.extend(
+                self._chunk_candidates(chunk, extracted, start, end, len(texto))
+            )
+            audits.append(self._chunk_audit(audit, start, end, counted))
+        return self._merge_candidates(candidates), audits
+
+    def _tokenizer_url(self) -> str:
+        # Keep the configured API origin so credentials cannot go to another host.
+        return str(self._cliente.base_url.copy_with(path=self._config.tokenizer_path))
+
+    def _estimate_tokens(self, text: str) -> dict[str, int]:
+        # Conservative byte estimate, not a model-specific tokenizer guarantee.
+        payload = json.dumps(self._mensagens(text), ensure_ascii=False)
+        schema = json.dumps(
+            LoteCandidatosRequest.model_json_schema(), ensure_ascii=False
+        )
+        return {"count": len((payload + schema).encode("utf-8"))}
+
+    def _fits(self, counted: dict[str, Any]) -> bool:
+        limit = min(
+            self._config.context_window_tokens,
+            counted.get("max_model_len") or self._config.context_window_tokens,
+        )
+        return (
+            counted["count"]
+            + self._config.max_output_tokens
+            + self._config.token_margin
+            <= limit
+        )
+
+    def _split_range(self, text: str, start: int, end: int) -> list[tuple[int, int]]:
+        if end - start <= 1:
+            raise ValueError(
+                "Extraction prompt/output budget cannot fit even one character; check the context and output limits"
+            )
+        midpoint = (start + end) // 2
+        # Prefer a nearby paragraph boundary without making either side too large.
+        boundary = text.rfind("\n\n", start + (end - start) // 3, midpoint)
+        if boundary > start:
+            midpoint = boundary + 2
+        overlap = min(
+            self._config.chunk_overlap_chars // 2,
+            (midpoint - start) // 2,
+            (end - midpoint) // 2,
+        )
+        return [(start, midpoint + overlap), (midpoint - overlap, end)]
+
+    def _record_split(
+        self,
+        error: Exception,
+        chunk: str,
+        start: int,
+        end: int,
+        audits: list[dict[str, Any]],
+    ) -> None:
+        if isinstance(error, BadRequestError):
+            message = str(error).lower()
+            if not any(
+                marker in message
+                for marker in (
+                    "context_length_exceeded",
+                    "maximum context length",
+                    "context window",
+                    "max_model_len",
+                    "maximum number of tokens",
+                )
+            ):
+                raise error
+        audit = criar_auditoria_erro(
+            self._requisicao(chunk),
+            LoteCandidatosRequest,
+            error,
+            1,
+            getattr(error, "completion", None),
+        )
+        audits.append(
+            complementar_auditoria(
+                audit,
+                chunk={"start": start, "end": end},
+                action="split_after_capacity_error",
+            )
+        )
+
+    def _chunk_audit(
+        self, audit: dict[str, Any], start: int, end: int, counted: dict[str, Any]
+    ) -> dict[str, Any]:
+        return complementar_auditoria(
+            audit,
+            chunk={
+                "start": start,
+                "end": end,
+                "prompt_tokens": counted["count"],
+                "count_method": "server_tokenizer"
+                if self._config.tokenizer_path
+                else "utf8_byte_estimate",
+                "context_window_tokens": min(
+                    self._config.context_window_tokens,
+                    counted.get("max_model_len") or self._config.context_window_tokens,
+                ),
+            },
+        )
+
+    def _chunk_candidates(
+        self,
+        text: str,
+        candidates: list[CandidatoCitacaoRequest],
+        start: int,
+        end: int,
+        total: int,
+    ) -> list[tuple[CandidatoCitacao, bool]]:
+        results = []
+        for candidate in self._processar_candidatos(text, candidates):
+            boundary = False
+            if candidate.inicio is not None and candidate.fim is not None:
+                boundary = (start > 0 and candidate.inicio == 0) or (
+                    end < total and candidate.fim == len(text)
+                )
+                candidate = candidate.model_copy(
+                    update={
+                        "inicio": candidate.inicio + start,
+                        "fim": candidate.fim + start,
+                    }
+                )
+            results.append((candidate, boundary))
+        return results
+
+    @staticmethod
+    def _merge_candidates(
+        candidates: list[tuple[CandidatoCitacao, bool]],
+    ) -> list[CandidatoCitacao]:
+        unique = {}
+        for candidate, boundary in candidates:
+            if boundary and any(
+                other.tipo == candidate.tipo
+                and other.inicio is not None
+                and other.inicio <= candidate.inicio
+                and other.fim >= candidate.fim
+                and (other.inicio, other.fim) != (candidate.inicio, candidate.fim)
+                for other, _ in candidates
+            ):
+                continue
+            key = (candidate.inicio, candidate.fim, candidate.tipo, candidate.trecho)
+            previous = unique.get(key)
+            if previous is None or (candidate.confianca_extracao or 0) > (
+                previous.confianca_extracao or 0
+            ):
+                unique[key] = candidate
+        return sorted(
+            unique.values(),
+            key=lambda item: item.inicio if item.inicio is not None else float("inf"),
+        )
 
     def _mensagens(self, texto: str) -> list[ChatCompletionMessageParam]:
         return [
@@ -109,6 +369,7 @@ class AgenteExtrator:
             "top_p": self._config.top_p if self._config.top_p is not None else omit,
             "messages": self._mensagens(texto),
             "response_format": LoteCandidatosRequest,
+            "max_completion_tokens": self._config.max_output_tokens,
             "reasoning_effort": (
                 self._config.reasoning_effort
                 if self._config.reasoning_effort is not None
@@ -264,7 +525,7 @@ def executar_extracao(
 
     for arquivo in tqdm(arquivos, desc="Extraindo candidatos"):
         texto = arquivo.read_text(encoding="utf-8")
-        candidatos, chamada = extrator.extrair_auditada(texto)
+        candidatos, chamadas = extrator.extrair_auditada(texto)
         escrever_saida_documento(
             output_file,
             DocumentoExtraido(
@@ -272,7 +533,7 @@ def executar_extracao(
                 texto=texto,
                 candidatos=candidatos,
             ),
-            [chamada],
+            chamadas,
         )
 
 
@@ -292,7 +553,7 @@ async def executar_extracao_async(
     async def processar(arquivo: Path) -> None:
         async with semaforo:
             texto = arquivo.read_text(encoding="utf-8")
-            candidatos, chamada = await extrator.extrair_auditada_async(texto)
+            candidatos, chamadas = await extrator.extrair_auditada_async(texto)
         progresso.update()
         escrever_saida_documento(
             output_file,
@@ -301,7 +562,7 @@ async def executar_extracao_async(
                 texto=texto,
                 candidatos=candidatos,
             ),
-            [chamada],
+            chamadas,
         )
 
     try:
