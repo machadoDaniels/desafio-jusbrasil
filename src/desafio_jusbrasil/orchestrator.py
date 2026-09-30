@@ -39,6 +39,7 @@ VerificadorVeracidade = _veracity.VerificadorVeracidade
 executar_veracidade = _veracity.executar_veracidade
 
 
+
 class Orquestrador:
     def __init__(
         self,
@@ -86,7 +87,7 @@ async def _main(caminho_configuracao: Path) -> None:
         config.workdir / "03-entities", "entities", config.entities
     )
     escrever_manifesto_etapa(config.workdir / "04-veracity", "veracity")
-    async with AsyncOpenAI(base_url=config.entities.base_url, max_retries=0) as cliente_entities:
+    async with AsyncOpenAI(base_url=config.entities.base_url) as cliente_entities:
         orquestrador = Orquestrador(
             AgenteExtrator(
                 OpenAI(base_url=config.extractor.base_url),
@@ -96,7 +97,7 @@ async def _main(caminho_configuracao: Path) -> None:
                 OpenAI(base_url=config.completeness.base_url),
                 config.completeness,
             ),
-            AgenteExtratorEntidades.from_config(cliente_entities, config),
+            AgenteExtratorEntidades(cliente_entities, config.entities),
             VerificadorVeracidade(config.database),
             config.entities.max_concurrency,
         )

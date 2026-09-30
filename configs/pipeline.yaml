@@ -4,7 +4,7 @@ database: data/desafio1_bracis_enriched_gemma4-12b-fewshot.db
 
 extractor:
   model: google/gemma-4-12B-it-qat-w4a16-ct
-  base_url: https://855a-200-137-197-69.ngrok-free.app/v1
+  base_url: https://84a5-200-137-197-215.ngrok-free.app/v1
   temperature: null
   top_p: null
   top_k: null
@@ -15,7 +15,7 @@ extractor:
 
 completeness:
   model: google/gemma-4-12B-it-qat-w4a16-ct
-  base_url: https://855a-200-137-197-69.ngrok-free.app/v1
+  base_url: https://84a5-200-137-197-215.ngrok-free.app/v1
   temperature: null
   top_p: null
   top_k: null
@@ -25,7 +25,7 @@ completeness:
 
 entities:
   model: google/gemma-4-12B-it-qat-w4a16-ct
-  base_url: https://855a-200-137-197-69.ngrok-free.app/v1
+  base_url: https://84a5-200-137-197-215.ngrok-free.app/v1
   temperature: null
   top_p: null
   top_k: null
