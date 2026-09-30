@@ -5,4 +5,4 @@ outputs/
 
 **.pyc
 
-data/
+data/*

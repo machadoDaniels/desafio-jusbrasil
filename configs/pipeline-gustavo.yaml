@@ -1,11 +1,10 @@
-# input_dir, workdir e database são sobrescritos pelo run.sh (--input-dir/--workdir/--database)
 input_dir: desafio-jusbrasil-bracis-2026/txt
-workdir: outputs/final
-database: outputs/final/enriched.db
+workdir: outputs/run-020-confianca
+database: data/desafio1_bracis_enriched_gold.db
 
 extractor:
   model: google/gemma-4-12B-it-qat-w4a16-ct
-  base_url: http://127.0.0.1:8000/v1
+  base_url: https://855a-200-137-197-69.ngrok-free.app/v1
   temperature: 0
   top_p: null
   top_k: null
@@ -13,12 +12,10 @@ extractor:
   async_requests: true
   max_concurrency: 8
   debug: true
-  context_window_tokens: 32768
-  tokenizer_path: /tokenize
 
 completeness:
   model: google/gemma-4-12B-it-qat-w4a16-ct
-  base_url: http://127.0.0.1:8000/v1
+  base_url: https://855a-200-137-197-69.ngrok-free.app/v1
   temperature: 0
   top_p: null
   top_k: null
@@ -28,7 +25,7 @@ completeness:
 
 entities:
   model: google/gemma-4-12B-it-qat-w4a16-ct
-  base_url: http://127.0.0.1:8000/v1
+  base_url: https://855a-200-137-197-69.ngrok-free.app/v1
   temperature: 0
   top_p: null
   top_k: null
@@ -37,3 +34,10 @@ entities:
   max_concurrency: 8
   max_retries: 5
   request_timeout_seconds: 60
+
+
+# Ollama: http://127.0.0.1:11434/v1 e reasoning_effort: none
+# vLLM: http://HOST:PORT/v1
+
+# openai: https://api.openai.com/v1
+# openrouter: https://openrouter.ai/api/v1

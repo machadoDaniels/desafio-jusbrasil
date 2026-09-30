@@ -1,0 +1,34 @@
+[
+  {
+    "text": "A Lei nº 8.731/2044 foi editada para tratar do tema.",
+    "expected": {"numero_diploma": "8731"}
+  },
+  {
+    "text": "O Decreto-Lei n. 3.208, de 2045, foi citado no recurso.",
+    "expected": {"numero_diploma": "3208"}
+  },
+  {
+    "text": "A Lei Complementar 117/2046 entrou em vigor naquele ano.",
+    "expected": {"numero_diploma": "117"}
+  },
+  {
+    "text": "A Medida Provisória nº 1.406 é mencionada na petição.",
+    "expected": {"numero_diploma": "1406"}
+  },
+  {
+    "text": "O art. 31 e o § 4º do Código Civil foram debatidos, sem referência à lei instituidora.",
+    "expected": {"numero_diploma": null}
+  },
+  {
+    "text": "O acórdão de 2047 citou a Constituição da República e seu art. 5º.",
+    "expected": {"numero_diploma": null}
+  },
+  {
+    "text": "A citação ao processo 0098765-43.2022.4.01.0001 e ao inciso II não indica o número de uma norma.",
+    "expected": {"numero_diploma": null}
+  },
+  {
+    "text": "Segundo a Lei 6.582, de 2048, a regra passou a valer imediatamente.",
+    "expected": {"numero_diploma": "6582"}
+  }
+]

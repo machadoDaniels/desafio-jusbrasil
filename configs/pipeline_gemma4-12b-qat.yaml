@@ -1,6 +1,6 @@
 # input_dir, workdir e database são sobrescritos pelo run.sh (--input-dir/--workdir/--database)
 input_dir: desafio-jusbrasil-bracis-2026/txt
-workdir: outputs/final
+workdir: outputs/run-20-gemma4-12B-it-qat
 database: data/desafio1_bracis_enriched_gemma4-12B-it-qat-w4a16-ct.db
 
 extractor:
@@ -13,6 +13,8 @@ extractor:
   async_requests: true
   max_concurrency: 8
   debug: true
+  context_window_tokens: 32768
+  tokenizer_path: /tokenize
 
 completeness:
   model: google/gemma-4-12B-it-qat-w4a16-ct

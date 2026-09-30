@@ -1,0 +1,34 @@
+[
+  {
+    "text": "Súmula Vinculante 21 do Supremo Tribunal Federal.",
+    "expected": {"natureza": "sumula", "numero_sumula": 21, "sumula_vinculante": true}
+  },
+  {
+    "text": "Súmula nº 419, do Superior Tribunal de Justiça.",
+    "expected": {"natureza": "sumula", "numero_sumula": 419, "sumula_vinculante": false}
+  },
+  {
+    "text": "Súmula do Tribunal Regional do Trabalho, número ilegível.",
+    "expected": {"natureza": "sumula", "numero_sumula": null, "sumula_vinculante": false}
+  },
+  {
+    "text": "5úmula 72, referência transcrita em certidão.",
+    "expected": {"natureza": "sumula", "numero_sumula": 72, "sumula_vinculante": false}
+  },
+  {
+    "text": "AgRg no Habeas Corpus nº 456.789/BA.",
+    "expected": {"natureza": "acordao", "numero_sumula": null, "sumula_vinculante": null}
+  },
+  {
+    "text": "Recurso de Revista 0003210-45.2031.5.06.0000, decisão da Oitava Turma.",
+    "expected": {"natureza": "acordao", "numero_sumula": null, "sumula_vinculante": null}
+  },
+  {
+    "text": "Súmula Vinculante, referência sem número no excerto.",
+    "expected": {"natureza": "sumula", "numero_sumula": null, "sumula_vinculante": true}
+  },
+  {
+    "text": "Apelação Cível nº 9876543-21.2032.8.03.0001, sem referência a súmula.",
+    "expected": {"natureza": "acordao", "numero_sumula": null, "sumula_vinculante": null}
+  }
+]
