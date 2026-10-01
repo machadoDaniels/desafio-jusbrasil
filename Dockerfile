@@ -6,10 +6,8 @@
 #     -v /caminho/dados:/dados -v /caminho/saida:/saida \
 #     desafio-jusbrasil /dados/base.db /dados/txt /saida/submission.csv
 #
-# Release estável com tag imutável. O checkpoint é `gemma4_unified` (transformers 5.10.1);
-# se o v0.30.0 não o reconhecer no primeiro teste, troque por um nightly fixado por commit
-# (`nightly-<sha>`), nunca por `nightly`, que muda todo dia.
-ARG VLLM_IMAGE=vllm/vllm-openai:v0.29.0
+# Imagem base fixada por tag e digest.
+ARG VLLM_IMAGE=vllm/vllm-openai:v0.29.0@sha256:c2914767605584b6d8f45686b82de173ecc99e781897aa3d0a66dacd72c51ae1
 FROM ${VLLM_IMAGE}
 
 ENV HF_HOME=/opt/hf \
@@ -31,7 +29,9 @@ RUN apt-get update && apt-get install -y --no-install-recommends curl \
 WORKDIR /app
 COPY pyproject.toml README.md ./
 COPY src ./src
-RUN pip install --no-cache-dir "openai>=3.14.1" python-dotenv pyyaml tqdm pandas pydantic \
+# Versões fixas, as mesmas da imagem validada na RTX 4090 (compatíveis com o vLLM da base).
+RUN pip install --no-cache-dir openai==3.22.1 python-dotenv==1.2.3 pyyaml==6.0.3 \
+      tqdm==4.70.0 pandas==3.0.6 pydantic==2.13.5 \
     && pip install --no-cache-dir --no-deps .
 
 COPY configs ./configs

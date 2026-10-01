@@ -11,13 +11,13 @@ Tudo roda offline em uma GPU de 24 GB de VRAM, com um único modelo aberto servi
 - Docker. Nada mais é necessário no host: o vLLM, o Python e os pesos do modelo ficam na imagem.
 - Acesso à internet **apenas para construir a imagem**, que baixa as dependências e os pesos do modelo. A execução não usa rede nem chama APIs externas.
 
-### Build
+### Preparação: build da imagem (com internet, antes da execução)
 
 ```bash
 docker build -t desafio-jusbrasil .
 ```
 
-A imagem é baseada em `vllm/vllm-openai:v0.29.0` e baixa para dentro dela os pesos do modelo em uma revisão fixa (`1d2c2d7f2466070e69d6fb3fd5ce9a7d75f2f6ee`). Nenhum peso é baixado em tempo de execução.
+O build é o único passo que usa a rede. A imagem é baseada em `vllm/vllm-openai:v0.29.0`, fixada por digest, com as dependências Python em versões fixas, e baixa para dentro dela os pesos do modelo em uma revisão fixa (`1d2c2d7f2466070e69d6fb3fd5ce9a7d75f2f6ee`), cerca de 32 GB no total. Com a imagem pronta, a execução abaixo roda sem internet; nenhum peso é baixado em tempo de execução.
 
 ### Execução (ponto de entrada único)
 
@@ -31,7 +31,7 @@ bash run.sh <caminho_db> <pasta_txt> <arquivo_saida>
 
 Se `<arquivo_saida>` for uma pasta, o CSV é gravado como `submission.csv` dentro dela.
 
-O [`run.sh`](run.sh) constrói a imagem se ela ainda não existir (`IMAGEM` sobrescreve a tag, padrão `desafio-jusbrasil:latest`) e a executa com `--network none`, montando a base, a pasta de TXT (somente leitura), a pasta de saída e `outputs/`. Dentro do container, [`scripts/run_in_container.sh`](scripts/run_in_container.sh) executa todas as etapas sem intervenção manual:
+O [`run.sh`](run.sh) usa a imagem já construída (`IMAGEM` sobrescreve a tag, padrão `desafio-jusbrasil:latest`; se ela não existir, o build é feito antes, o que requer internet) e a executa com `--network none`, montando a base, a pasta de TXT (somente leitura), a pasta de saída e `outputs/`. Dentro do container, [`scripts/run_in_container.sh`](scripts/run_in_container.sh) executa todas as etapas sem intervenção manual:
 
 1. Sobe o vLLM em `127.0.0.1:8000` com a revisão fixa do modelo e espera até ele responder.
 2. **Enriquece a base** recebida em uma cópia nova (`outputs/final/enriched.db`) com o código de `src/desafio_jusbrasil/database_preprocessing`. A base original nunca é modificada.
@@ -66,7 +66,7 @@ Dentro do container, `MAX_MODEL_LEN`, `GPU_MEMORY_UTILIZATION`, `MAX_NUM_SEQS`, 
 ### Reprodutibilidade
 
 - Todas as chamadas ao modelo usam `temperature: 0` e o servidor roda com `--seed 0`. Não há amostragem.
-- A revisão do modelo, a imagem do vLLM e as dependências Python (`uv.lock`) são fixas.
+- A revisão do modelo, a imagem do vLLM (tag e digest) e as dependências Python da imagem são fixas; para desenvolvimento local, as versões ficam no `uv.lock`.
 - Sem caminhos absolutos, passos manuais ou arquivos fora do repositório: o único artefato extra, o dicionário de nomes de relatores `data/relatores_padronizacao.json`, é versionado, incluído na imagem e copiado ao lado da base enriquecida.
 - Pequenas diferenças numéricas ainda podem vir dos kernels da GPU e do agrupamento de requisições no vLLM.
 
@@ -208,21 +208,13 @@ Esses comandos criam e pontuam arquivos locais; não enviam nada ao Kaggle.
 
 ### Resultados de desenvolvimento
 
-Nos 26 documentos de desenvolvimento, uma execução completa com `google/gemma-4-12B-it-qat-w4a16-ct`, temperatura 0 e uma base enriquecida pelo mesmo modelo (`outputs/run-20-gemma4-12B-it-qat`) obteve **0,941** na métrica oficial, antes das regras de confiança atuais. Uma execução anterior da v2 contra a base enriquecida de referência (`data/desafio1_bracis_enriched_gold.db`) chegou a um F1 estrito geral de 91,43%.
+Nos 26 documentos de desenvolvimento, com `google/gemma-4-12B-it-qat-w4a16-ct`, temperatura 0 e a base enriquecida pelo mesmo modelo, a etapa 4 atual (com o fallback FTS) obteve **0,923** na métrica oficial, contra 0,907 sem o fallback. As etapas 1 a 3 vieram de uma execução anterior às regras de confiança atuais, então a confiança das `incompleta` não entrou nessa medida.
 
 Os prompts usam demonstrações sintéticas, mas o corpus de desenvolvimento também orientou a escrita dos prompts. Esses números são resultados de desenvolvimento, não um benchmark em dados não vistos. Os artefatos de execução em `outputs/` são locais e ficam fora do Git.
 
 ### Checkpoints e auditorias
 
 Cada etapa grava `<etapa>/<documento_id>/resultado.json` e arquivos de auditoria numerados em `01-extraction`, `02-completeness`, `03-entities` e `04-veracity`; os JSONs finais ficam em `predictions/`. As auditorias registram as requisições, respostas, tentativas e tempos das chamadas ao modelo, e o SQL, os parâmetros, os registros encontrados e a classificação de cada verificação. Os manifestos de cada etapa registram a configuração. Os avaliadores ignoram os manifestos e os arquivos de auditoria numerados.
-
-### Testes
-
-```bash
-uv run python -m unittest discover -s tests
-```
-
-Os 74 testes rodam sem inferência.
 
 ### Limitações conhecidas
 

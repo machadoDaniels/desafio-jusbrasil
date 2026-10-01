@@ -23,9 +23,6 @@ fi
 SAIDA="$(realpath -m "$SAIDA")"
 mkdir -p "$(dirname "$SAIDA")" outputs
 
-echo "Construindo imagem: $IMAGEM"
-docker build -t "$IMAGEM" .
-
 
 docker run --rm --gpus "${GPUS:-all}" --network none --ipc=host \
   -e HOST_UID="$(id -u)" -e HOST_GID="$(id -g)" \
