@@ -38,7 +38,7 @@ O [`run.sh`](run.sh) usa a imagem já construída (`IMAGEM` sobrescreve a tag, p
 3. Roda as quatro etapas do pipeline sobre a pasta de TXT, consultando a cópia enriquecida.
 4. Grava o CSV de submissão e derruba o servidor.
 
-Checkpoints intermediários, auditorias e logs são gravados em `outputs/final/` no repositório, com posse do usuário do host: `run.log` (log de toda a execução, com horário, etapa e duração) e `vllm.log` (log do servidor). `GPUS` escolhe a GPU repassada ao Docker (padrão `all`; por exemplo, `GPUS='"device=0"'`).
+Checkpoints intermediários, auditorias e logs são gravados em `outputs/final/` no repositório, com posse do usuário do host: `run.log` (log de toda a execução, com horário, etapa e duração) e `vllm.log` (log do servidor). O container se chama `desafio-jusbrasil` (`CONTAINER` sobrescreve), então uma segunda execução simultânea é recusada pelo Docker e uma execução em andamento pode ser parada com `docker stop desafio-jusbrasil`. `GPUS` escolhe a GPU repassada ao Docker (padrão `all`; por exemplo, `GPUS='"device=0"'`).
 
 A imagem também pode ser executada diretamente, sem o `run.sh`:
 

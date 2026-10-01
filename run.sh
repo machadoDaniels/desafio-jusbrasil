@@ -26,7 +26,9 @@ mkdir -p "$(dirname "$SAIDA")" outputs
 docker image inspect "$IMAGEM" > /dev/null 2>&1 \
   || { echo "imagem $IMAGEM não encontrada; construa antes com: docker build -t ${IMAGEM%:latest} ." >&2; exit 2; }
 
-docker run --rm --gpus "${GPUS:-all}" --network none --ipc=host \
+# Nome fixo: uma segunda execução simultânea falha logo, em vez de disputar a GPU.
+docker run --rm --name "${CONTAINER:-desafio-jusbrasil}" \
+  --gpus "${GPUS:-all}" --network none --ipc=host \
   -e HOST_UID="$(id -u)" -e HOST_GID="$(id -g)" \
   -v "$DB:/entrada/$(basename "$DB")" \
   -v "$TXT:/entrada/txt:ro" \
