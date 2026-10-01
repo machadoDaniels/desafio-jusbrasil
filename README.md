@@ -55,7 +55,7 @@ docker run --rm --gpus all --network none --ipc=host \
 | Item | Valor | Onde |
 | --- | --- | --- |
 | Modelo | `google/gemma-4-12B-it-qat-w4a16-ct`, revisão `1d2c2d7…` | `Dockerfile`, `scripts/run_in_container.sh` |
-| Servidor | vLLM `v0.29.0`, `--max-model-len 16384`, `--gpu-memory-utilization 0.92`, `--max-num-seqs 16`, `--reasoning-parser gemma4`, `--seed 0` | `scripts/run_in_container.sh` |
+| Servidor | vLLM `v0.29.0`, `--max-model-len 32768`, `--gpu-memory-utilization 0.92`, `--max-num-seqs 16`, `--reasoning-parser gemma4`, `--seed 0` | `scripts/run_in_container.sh` |
 | Amostragem | `temperature: 0` em todas as chamadas ao modelo | `configs/final_*.yaml` |
 | Concorrência | 8 requisições | `configs/final_*.yaml` |
 | Config do pipeline | [`configs/final_pipeline.yaml`](configs/final_pipeline.yaml) | |
