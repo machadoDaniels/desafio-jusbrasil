@@ -1,6 +1,5 @@
 # Jusbrasil BRACIS 2026 — Caça-Alucinações
 
-Este pipeline encontra citações jurídicas em documentos TXT, extrai seus campos estruturados e as verifica contra uma base SQLite canônica. Para cada citação, gera um trecho (span), uma classe (`real`, `inventada` ou `incompleta`), o ID canônico das citações reais e um valor de confiança.
 
 Tudo roda offline em uma GPU de 24 GB de VRAM, com um único modelo aberto servido localmente pelo vLLM: [`google/gemma-4-12B-it-qat-w4a16-ct`](https://huggingface.co/google/gemma-4-12B-it-qat-w4a16-ct).
 
@@ -49,19 +48,7 @@ docker run --rm --gpus all --network none --ipc=host \
   desafio-jusbrasil /dados/<base>.db /dados/<pasta_txt> /saida/submission.csv
 ```
 
-### Execução sem Docker
 
-Em uma máquina com a GPU, o `vllm` (v0.29.0) instalado no ambiente do projeto e os pesos do modelo já no cache do Hugging Face, o script do container roda diretamente:
-
-```bash
-uv sync
-huggingface-cli download google/gemma-4-12B-it-qat-w4a16-ct \
-  --revision 1d2c2d7f2466070e69d6fb3fd5ce9a7d75f2f6ee
-bash scripts/run_in_container.sh desafio-jusbrasil-bracis-2026/desafio1_bracis.db \
-  desafio-jusbrasil-bracis-2026/txt outputs/submission.csv
-```
-
-O script define `HF_HUB_OFFLINE=1`, então os pesos precisam ser baixados antes.
 
 ### Configuração da execução
 
