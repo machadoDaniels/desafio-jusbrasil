@@ -282,8 +282,13 @@ class VerificadorVeracidade:
             )
         if len(registros) > 1:
             return ResultadoVeracidade(
-                classificacao=Classificacao.INCOMPLETA,
-                justificativa="A consulta estruturada encontrou mais de um registro canônico.",
+                classificacao=Classificacao.REAL,
+                id_canonico=min(registro["id"] for registro in registros),
+                confianca=0.0,
+                justificativa=(
+                    f"A consulta estruturada encontrou {len(registros)} registros "
+                    "canônicos; usado o de menor id."
+                ),
             )
         return ResultadoVeracidade(
             classificacao=Classificacao.REAL,

@@ -73,10 +73,12 @@ class Orquestrador:
         materializar(veracidade, workdir / "predictions")
 
 
-async def _main(caminho_configuracao: Path, substituicoes: dict[str, Path]) -> None:
+async def _main(
+    caminho_configuracao: Path, substituicoes: dict[str, Path] | None = None
+) -> None:
     load_dotenv()
     config = PipelineConfig.from_yaml(caminho_configuracao).model_copy(
-        update=substituicoes
+        update=substituicoes or {}
     )
     escrever_manifesto_etapa(
         config.workdir / "01-extraction", "extractor", config.extractor

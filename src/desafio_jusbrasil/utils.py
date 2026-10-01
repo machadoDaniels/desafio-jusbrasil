@@ -228,7 +228,9 @@ def materializar(entrada: Path, pasta_saida: Path) -> None:
                     tipo=candidato.tipo,
                     classificacao=resultado.classificacao,
                     resolucao=resolucao,
-                    confianca=candidato.confianca_extracao,
+                    confianca=resultado.confianca
+                    if resultado.confianca is not None
+                    else candidato.confianca_extracao,
                 )
             )
         predicao = DocumentoPredito(

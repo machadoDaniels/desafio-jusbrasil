@@ -579,6 +579,18 @@ class PipelineTest(unittest.TestCase):
             self.assertIn("numero_registro_tribunal IN (?)", sql)
             self.assertEqual(parametros, ["68244", "68244"])
 
+    def test_veracidade_mais_de_um_registro_retorna_real_com_menor_id(self) -> None:
+        resultado = VerificadorVeracidade._classificar(
+            [
+                {"id": 7, "documento_id": "doc_b"},
+                {"id": 3, "documento_id": "doc_a"},
+            ]
+        )
+
+        self.assertEqual(resultado.classificacao, Classificacao.REAL)
+        self.assertEqual(resultado.id_canonico, 3)
+        self.assertEqual(resultado.confianca, 0.0)
+
     def test_veracidade_sem_identificador_retorna_incompleta(self) -> None:
         verificador = object.__new__(VerificadorVeracidade)
 
