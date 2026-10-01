@@ -1,8 +1,7 @@
 #!/usr/bin/env bash
 # Ponto de entrada único: bash run.sh <caminho_db> <pasta_txt> <arquivo_saida>
 # Roda a solução inteira no container Docker (vLLM + pipeline), sem rede.
-# Requer Docker com acesso à GPU (NVIDIA Container Toolkit). Se a imagem não existir,
-# ela é construída antes (único passo que usa internet: dependências e pesos).
+# Requer Docker com acesso à GPU (NVIDIA Container Toolkit). Se a imagem não existir, ela é construída antes (único passo que usa internet: dependências e pesos).
 set -euo pipefail
 
 if [ "$#" -ne 3 ]; then

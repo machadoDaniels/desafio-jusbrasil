@@ -9,7 +9,7 @@
 # Release estável com tag imutável. O checkpoint é `gemma4_unified` (transformers 5.10.1);
 # se o v0.30.0 não o reconhecer no primeiro teste, troque por um nightly fixado por commit
 # (`nightly-<sha>`), nunca por `nightly`, que muda todo dia.
-ARG VLLM_IMAGE=vllm/vllm-openai:v0.30.0
+ARG VLLM_IMAGE=vllm/vllm-openai:v0.29.0
 FROM ${VLLM_IMAGE}
 
 ENV HF_HOME=/opt/hf \
