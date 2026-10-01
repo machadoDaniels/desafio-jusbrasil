@@ -120,7 +120,7 @@ The canonical database stores most identifiers only inside the document text. En
 - **Legal provisions:** normalized legal instrument, instrument number and article.
 - `relator_norm`: deterministic normalization of the judge's name with `data/relatores_padronizacao.json`.
 
-Each document is sent once to the model with a per-type prompt, few-shot examples (`configs/few_shot_database_preprocessing.json`) and a JSON schema with closed vocabularies. Acórdãos are cut to their first 10,000 and last 2,000 characters, where these metadata usually appear. Numeric fields keep digits only, and CNJ numbers are validated against the text. If a document fails after the retries, the database is still materialized and that document keeps null columns (`run.sh` falls back to `--materializar`).
+Each document is sent once to the model with a per-type prompt, few-shot examples (`configs/few_shot_database_preprocessing.json`) and a JSON schema with closed vocabularies. Acórdãos are cut to their first 10,000 and last 2,000 characters, where these metadata usually appear. Numeric fields keep digits only, and CNJ numbers are validated against the text. If a document fails after the retries, the database is still materialized and that document keeps null columns (the execution script falls back to `--materializar`).
 
 ### 1. Extraction
 
