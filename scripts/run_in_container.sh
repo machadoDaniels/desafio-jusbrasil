@@ -56,7 +56,7 @@ curl -fs "http://127.0.0.1:$PORTA/v1/models" > /dev/null || {
   exit 1
 }
 
-PRE=(python -m desafio_jusbrasil.database_preprocessing
+PRE=(python3 -m desafio_jusbrasil.database_preprocessing
   --config configs/final_database_preprocessing.yaml
   --input "$DB" --output "$WORKDIR/enriched.db" --audit-dir "$WORKDIR/database-preprocessing")
 
@@ -67,11 +67,11 @@ if ! "${PRE[@]}"; then
   "${PRE[@]}" --materializar
 fi
 
-python -m desafio_jusbrasil.orchestrator \
+python3 -m desafio_jusbrasil.orchestrator \
   --config configs/final_pipeline.yaml \
   --input-dir "$TXT" --workdir "$WORKDIR" --database "$WORKDIR/enriched.db"
 
-python scripts/json_to_submission.py "$WORKDIR/predictions" "$SAIDA"
+python3 scripts/json_to_submission.py "$WORKDIR/predictions" "$SAIDA"
 
 # Devolve a posse dos arquivos ao usuário do host quando o container roda como root.
 if [ -n "${HOST_UID:-}" ] && [ -n "${HOST_GID:-}" ]; then
