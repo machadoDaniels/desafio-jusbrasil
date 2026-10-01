@@ -571,6 +571,36 @@ class PipelineTest(unittest.TestCase):
             self.assertIn("numero_processo_cnj = ?", sql)
             self.assertEqual(parametros, ["00003788220166050151"])
 
+    def test_veracidade_usa_fts_quando_estruturada_nao_encontra(self) -> None:
+        with tempfile.TemporaryDirectory() as temporario:
+            banco = Path(temporario) / "base.db"
+            with sqlite3.connect(banco) as conexao:
+                conexao.executescript(
+                    """
+                    CREATE TABLE documentos (
+                        documento_id TEXT PRIMARY KEY, id INTEGER UNIQUE,
+                        natureza TEXT, tipo TEXT, texto TEXT,
+                        numero_processo_cnj TEXT
+                    );
+                    CREATE VIRTUAL TABLE documentos_fts USING fts5(
+                        texto, content='documentos', content_rowid='rowid'
+                    );
+                    INSERT INTO documentos VALUES (
+                        'doc_1', 42, 'acordao', 'jurisprudencia',
+                        'Processo 0000378-82.2016.6.05.0151', NULL
+                    );
+                    INSERT INTO documentos_fts(documentos_fts) VALUES ('rebuild');
+                    """
+                )
+            registros, sql, _ = VerificadorVeracidade(banco)._consultar_base(
+                ConsultaJurisprudencia(
+                    natureza="acordao",
+                    numero_processo_cnj="00003788220166050151",
+                )
+            )
+            self.assertEqual(registros, [{"id": 42, "documento_id": "doc_1"}])
+            self.assertIn("documentos_fts MATCH ?", sql)
+
     def test_veracidade_busca_classe_e_registro_nas_duas_colunas(self) -> None:
         colunas = {"numero_classe_tribunal", "numero_registro_tribunal"}
         for consulta in (

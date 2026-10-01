@@ -5,6 +5,7 @@ from __future__ import annotations
 import argparse
 import re
 import sqlite3
+from importlib import import_module
 from pathlib import Path
 from typing import Any
 
@@ -31,6 +32,11 @@ from .utils import (
 )
 
 type ConsultaSql = tuple[str, list[Any]]
+
+
+def _veracity_fts() -> Any:
+    # Import tardio: 4_veracity_fts importa este módulo.
+    return import_module(".4_veracity_fts", __package__)
 
 
 class VerificadorVeracidade:
@@ -92,6 +98,7 @@ class VerificadorVeracidade:
 
             # 2. Busca estruturada: identificadores, súmula ou dispositivo legal.
             consulta_estruturada = self._consulta_estruturada(consulta, colunas)
+            estruturada = None
             if consulta_estruturada is not None:
                 sql, parametros = consulta_estruturada
                 linhas = conexao.execute(sql, parametros).fetchall()
@@ -114,8 +121,21 @@ class VerificadorVeracidade:
                                 sql_desambiguada,
                                 parametros_desambiguados,
                             )
-                return [dict(linha) for linha in linhas], sql, parametros
+                estruturada = [dict(linha) for linha in linhas], sql, parametros
+                if linhas:
+                    return estruturada
 
+            # 3. Fallback FTS5 quando a busca estruturada não existe ou não encontra registros.
+            tem_fts = conexao.execute(
+                "SELECT 1 FROM sqlite_master WHERE name = 'documentos_fts'"
+            ).fetchone()
+            if tem_fts:
+                try:
+                    return _veracity_fts().consultar_fts(conexao, consulta)
+                except ValueError:
+                    pass
+            if estruturada is not None:
+                return estruturada
             raise ValueError("nenhuma consulta estruturada disponível")
 
     # Busca estruturada -----------------------------------------------------

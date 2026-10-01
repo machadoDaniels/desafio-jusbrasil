@@ -137,15 +137,15 @@ Cada prompt de sistema traz regras de evidência compartilhadas, instruções es
 
 O verificador executa consultas SQLite parametrizadas e somente leitura sobre as colunas enriquecidas. Ele não chama nenhum LLM.
 
+Quando a busca estruturada não é possível ou não encontra registros, o verificador recorre ao índice FTS5 da base (`documentos_fts`), buscando no texto dos documentos os números extraídos (processo, súmula, artigo e diploma), em `4_veracity_fts.py`. Esse fallback cobre campos que o enriquecimento deixou de preencher; os registros que ele encontra seguem as mesmas regras da tabela abaixo.
+
 | Condição | Resultado | Confiança |
 | --- | --- | --- |
 | `completa: false`, ou saída de entidades indisponível | `incompleta` (sem consulta) | Probabilidade da etapa 2 |
 | Os campos extraídos não formam uma consulta suportada | `incompleta` | Probabilidade da etapa 2 |
-| A consulta não encontra nenhum registro | `inventada` | 0,75 |
+| Nem a consulta estruturada nem o FTS encontram registro | `inventada` | 0,75 |
 | Um único registro canônico corresponde | `real` com o seu ID canônico | 1,0 |
 | Vários registros restam depois de desambiguar por tribunal, UF, ano e relator | `real` com o menor ID entre eles | 0,0 |
-
-Existe um módulo separado, `4_veracity_fts`, como implementação alternativa; ele não é usado pelo `run.sh` e não define confiança.
 
 ### Confiança
 
