@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 # Ponto de entrada único: bash run.sh <caminho_db> <pasta_txt> <arquivo_saida>
 # Roda a solução inteira no container Docker (vLLM + pipeline), sem rede.
-# Requer Docker com acesso à GPU (NVIDIA Container Toolkit). Se a imagem não existir, ela é construída antes (único passo que usa internet: dependências e pesos).
+# Requer Docker com acesso à GPU (NVIDIA Container Toolkit) e a imagem já construída
+# (docker build -t desafio-jusbrasil ., único passo que usa internet: dependências e pesos).
 set -euo pipefail
 
 if [ "$#" -ne 3 ]; then
@@ -22,7 +23,8 @@ if [ -d "$SAIDA" ] || [[ "$SAIDA" == */ ]]; then
 fi
 SAIDA="$(realpath -m "$SAIDA")"
 mkdir -p "$(dirname "$SAIDA")" outputs
-
+docker image inspect "$IMAGEM" > /dev/null 2>&1 \
+  || { echo "imagem $IMAGEM não encontrada; construa antes com: docker build -t ${IMAGEM%:latest} ." >&2; exit 2; }
 
 docker run --rm --gpus "${GPUS:-all}" --network none --ipc=host \
   -e HOST_UID="$(id -u)" -e HOST_GID="$(id -g)" \

@@ -31,7 +31,7 @@ bash run.sh <caminho_db> <pasta_txt> <arquivo_saida>
 
 Se `<arquivo_saida>` for uma pasta, o CSV é gravado como `submission.csv` dentro dela.
 
-O [`run.sh`](run.sh) usa a imagem já construída (`IMAGEM` sobrescreve a tag, padrão `desafio-jusbrasil:latest`; se ela não existir, o build é feito antes, o que requer internet) e a executa com `--network none`, montando a base, a pasta de TXT (somente leitura), a pasta de saída e `outputs/`. Dentro do container, [`scripts/run_in_container.sh`](scripts/run_in_container.sh) executa todas as etapas sem intervenção manual:
+O [`run.sh`](run.sh) usa a imagem já construída (`IMAGEM` sobrescreve a tag, padrão `desafio-jusbrasil:latest`; se ela não existir, o script para e pede o build) e a executa com `--network none`, montando a base, a pasta de TXT (somente leitura), a pasta de saída e `outputs/`. Dentro do container, [`scripts/run_in_container.sh`](scripts/run_in_container.sh) executa todas as etapas sem intervenção manual:
 
 1. Sobe o vLLM em `127.0.0.1:8000` com a revisão fixa do modelo e espera até ele responder.
 2. **Enriquece a base** recebida em uma cópia nova (`outputs/final/enriched.db`) com o código de `src/desafio_jusbrasil/database_preprocessing`. A base original nunca é modificada.
