@@ -70,20 +70,6 @@ Dentro do container, `MAX_MODEL_LEN`, `GPU_MEMORY_UTILIZATION`, `MAX_NUM_SEQS`, 
 - Sem caminhos absolutos, passos manuais ou arquivos fora do repositório: o único artefato extra, o dicionário de nomes de relatores `data/relatores_padronizacao.json`, é versionado, incluído na imagem e copiado ao lado da base enriquecida.
 - Pequenas diferenças numéricas ainda podem vir dos kernels da GPU e do agrupamento de requisições no vLLM.
 
-### Atendimento às regras de submissão
-
-| Regra | Como é atendida |
-| --- | --- |
-| Código completo | `src/desafio_jusbrasil/` (pipeline e enriquecimento da base), `scripts/`, `configs/` |
-| README com abordagem e passos | Este arquivo |
-| Ambiente declarado (Docker) | [`Dockerfile`](Dockerfile); o `run.sh` executa tudo dentro dele |
-| Pesos em revisão fixa | Baixados no `docker build`, revisão `1d2c2d7f2466070e69d6fb3fd5ce9a7d75f2f6ee` |
-| Ponto de entrada único | `bash run.sh <caminho_db> <pasta_txt> <arquivo_saida>` |
-| GPU de até 24 GB | Um modelo de 12B quantizado em 4 bits (W4A16), contexto de 16k tokens |
-| Offline | Servidor vLLM local dentro do container; `HF_HUB_OFFLINE=1`; o `run.sh` usa `docker run --network none` |
-| Máquina limpa, sem caminhos absolutos | Todos os caminhos são argumentos ou relativos ao repositório |
-| Código de enriquecimento para um `.db` novo | Cada execução regera a cópia enriquecida a partir da base recebida |
-| Modelos usados só no desenvolvimento | Não são usados em tempo de execução; só o modelo acima é executado |
 
 ## Abordagem
 
@@ -171,34 +157,6 @@ A métrica oficial soma um bônus baseado no Brier sobre as citações pareadas,
 
 A materialização usa apenas a confiança da etapa 4.
 
-## Desenvolvimento
-
-### Setup
-
-Use Python 3.12 ou mais recente:
-
-```bash
-uv sync
-cp .env.example .env
-```
-
-Defina `OPENAI_API_KEY` no ambiente ou no `.env`. Para um endpoint local sem autenticação, o SDK ainda exige um valor não vazio, como `dummy`. Não faça commit de credenciais reais.
-
-As CLIs das etapas leem uma config YAML com `input_dir`, `workdir`, `database` e uma seção de modelo por etapa (`extractor`, `completeness`, `entities`). Os caminhos são resolvidos a partir do diretório de trabalho, então rode os comandos na raiz do projeto. As configs em `configs/` que não são `final_*` são experimentos de desenvolvimento e podem apontar para endpoints remotos.
-
-| Configuração | Comportamento |
-| --- | --- |
-| `temperature`, `top_p`, `top_k`, `reasoning_effort` | Nulo omite a configuração e usa o padrão do servidor. |
-| `async_requests` | Ativa extração/completude concorrentes nas CLIs isoladas dessas etapas. |
-| `max_concurrency` | Limita o trabalho concorrente; no NER, o executor compartilhado limita as requisições individuais ao LLM. |
-| `entities.max_retries` | Número máximo de tentativas por chamada de extrator. |
-| `entities.request_timeout_seconds` | Timeout por tentativa, sem contar a espera por uma vaga de concorrência. |
-| `extractor.debug` | Quando verdadeiro, mantém os candidatos não localizados nos checkpoints intermediários. |
-| `extractor.context_window_tokens`, `max_output_tokens`, `token_margin` | Controlam o orçamento de entrada/saída da extração. É usado o menor valor entre o configurado e o informado pelo servidor. |
-| `extractor.chunk_overlap_chars` | Acrescenta contexto compartilhado entre os blocos de extração. |
-| `extractor.tokenizer_path` | Endpoint do tokenizador (`/tokenize` no vLLM); sem ele, a extração usa uma estimativa conservadora por bytes. |
-
-O coordenador de entidades e o enriquecimento carregam `relatores_padronizacao.json` do diretório da base.
 
 ### Executando as etapas separadamente
 
