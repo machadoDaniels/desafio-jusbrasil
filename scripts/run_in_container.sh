@@ -30,7 +30,9 @@ vllm serve "$MODELO" \
   --revision "$REVISAO" --tokenizer-revision "$REVISAO" \
   --host 127.0.0.1 --port "$PORTA" \
   --max-model-len "${MAX_MODEL_LEN:-16384}" \
-  --gpu-memory-utilization "${GPU_MEMORY_UTILIZATION:-0.90}" \
+  --gpu-memory-utilization "${GPU_MEMORY_UTILIZATION:-0.92}" \
+  --max-num-seqs "${MAX_NUM_SEQS:-16}" \
+  --reasoning-parser gemma4 \
   --enable-chunked-prefill \
   --seed 0 \
   > "$WORKDIR/vllm.log" 2>&1 &
@@ -38,7 +40,8 @@ VLLM_PID=$!
 trap 'kill "$VLLM_PID" 2>/dev/null || true' EXIT
 
 echo "aguardando o vLLM em 127.0.0.1:$PORTA"
-for _ in $(seq 1 180); do
+# Até 1800 s: a primeira subida compila kernels e pode demorar.
+for _ in $(seq 1 360); do
   if curl -fs "http://127.0.0.1:$PORTA/v1/models" > /dev/null; then
     break
   fi

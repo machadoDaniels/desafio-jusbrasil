@@ -18,7 +18,7 @@ Everything runs offline on one GPU with 24 GB of VRAM, with a single open model 
 docker build -t desafio-jusbrasil .
 ```
 
-The image is based on `vllm/vllm-openai:v0.30.0` and downloads the model weights at a fixed revision (`1d2c2d7f2466070e69d6fb3fd5ce9a7d75f2f6ee`) into the image. No weights are fetched at run time.
+The image is based on `vllm/vllm-openai:v0.29.0` and downloads the model weights at a fixed revision (`1d2c2d7f2466070e69d6fb3fd5ce9a7d75f2f6ee`) into the image. No weights are fetched at run time.
 
 ### Run (single entry point)
 
@@ -51,7 +51,7 @@ docker run --rm --gpus all --network none --ipc=host \
 
 ### Running without Docker
 
-On a machine with the GPU, `vllm` (v0.30.0) installed in the project environment and the model weights already in the Hugging Face cache, the in-container script runs directly:
+On a machine with the GPU, `vllm` (v0.29.0) installed in the project environment and the model weights already in the Hugging Face cache, the in-container script runs directly:
 
 ```bash
 uv sync
@@ -68,13 +68,13 @@ The script sets `HF_HUB_OFFLINE=1`, so the weights must be downloaded beforehand
 | Setting | Value | Where |
 | --- | --- | --- |
 | Model | `google/gemma-4-12B-it-qat-w4a16-ct`, revision `1d2c2d7…` | `Dockerfile`, `scripts/run_in_container.sh` |
-| Server | vLLM `v0.30.0`, `--max-model-len 16384`, `--gpu-memory-utilization 0.90`, `--seed 0` | `scripts/run_in_container.sh` |
+| Server | vLLM `v0.29.0`, `--max-model-len 16384`, `--gpu-memory-utilization 0.92`, `--max-num-seqs 16`, `--reasoning-parser gemma4`, `--seed 0` | `scripts/run_in_container.sh` |
 | Sampling | `temperature: 0` in every model call | `configs/final_*.yaml` |
 | Concurrency | 8 requests | `configs/final_*.yaml` |
 | Pipeline config | [`configs/final_pipeline.yaml`](configs/final_pipeline.yaml) | |
 | Enrichment config | [`configs/final_database_preprocessing.yaml`](configs/final_database_preprocessing.yaml) | |
 
-Inside the container, `MAX_MODEL_LEN`, `GPU_MEMORY_UTILIZATION`, `PORTA` and `WORKDIR` can be overridden through environment variables.
+Inside the container, `MAX_MODEL_LEN`, `GPU_MEMORY_UTILIZATION`, `MAX_NUM_SEQS`, `PORTA` and `WORKDIR` can be overridden through environment variables.
 
 ### Reproducibility
 

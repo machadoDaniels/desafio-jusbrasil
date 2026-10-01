@@ -23,6 +23,11 @@ ARG MODEL_REVISION=1d2c2d7f2466070e69d6fb3fd5ce9a7d75f2f6ee
 ENV MODEL_REVISION=${MODEL_REVISION}
 RUN python3 -c "from huggingface_hub import snapshot_download; snapshot_download('${MODEL_ID}', revision='${MODEL_REVISION}')"
 
+# curl: run_in_container.sh espera /v1/models responder. Fica depois do download dos
+# pesos para não invalidar essa camada no cache.
+RUN apt-get update && apt-get install -y --no-install-recommends curl \
+ && rm -rf /var/lib/apt/lists/*
+
 WORKDIR /app
 COPY pyproject.toml README.md ./
 COPY src ./src
