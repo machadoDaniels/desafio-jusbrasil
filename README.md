@@ -61,7 +61,7 @@ docker run --rm --gpus all --network none --ipc=host \
 | Config do pipeline | [`configs/final_pipeline.yaml`](configs/final_pipeline.yaml) | |
 | Config do enriquecimento | [`configs/final_database_preprocessing.yaml`](configs/final_database_preprocessing.yaml) | |
 
-Dentro do container, `MAX_MODEL_LEN`, `GPU_MEMORY_UTILIZATION`, `MAX_NUM_SEQS`, `PORTA` e `WORKDIR` podem ser sobrescritos por variáveis de ambiente.
+Dentro do container, `MAX_MODEL_LEN`, `GPU_MEMORY_UTILIZATION`, `MAX_NUM_SEQS`, `PRE_TEMPO_MAXIMO`, `PORTA` e `WORKDIR` podem ser sobrescritos por variáveis de ambiente.
 
 ### Reprodutibilidade
 
@@ -93,7 +93,7 @@ A base canônica guarda a maior parte dos identificadores apenas dentro do texto
 - **Dispositivos legais:** diploma normalizado, número do diploma e artigo.
 - `relator_norm`: normalização determinística do nome do relator com `data/relatores_padronizacao.json`.
 
-Cada documento é enviado uma vez ao modelo, com prompt por tipo, exemplos few-shot (`configs/few_shot_database_preprocessing.json`) e um JSON schema com vocabulários fechados. Os acórdãos são cortados nos primeiros 10.000 e nos últimos 2.000 caracteres, onde esses metadados costumam aparecer. Campos numéricos guardam só dígitos, e os números CNJ são validados contra o texto. Se um documento falhar depois das novas tentativas, a base é materializada mesmo assim e esse documento fica com as colunas nulas (o script de execução recorre a `--materializar`).
+Cada documento é enviado uma vez ao modelo, com prompt por tipo, exemplos few-shot (`configs/few_shot_database_preprocessing.json`) e um JSON schema com vocabulários fechados. Os acórdãos são cortados nos primeiros 10.000 e nos últimos 2.000 caracteres, onde esses metadados costumam aparecer. Campos numéricos guardam só dígitos, e os números CNJ são validados contra o texto. Se um documento falhar depois das novas tentativas, a base é materializada mesmo assim e esse documento fica com as colunas nulas (o script de execução recorre a `--materializar`). O enriquecimento também tem um limite de tempo (`PRE_TEMPO_MAXIMO`, em minutos, padrão 180): ao estourar, é interrompido e a base é materializada com os documentos já processados, e os demais ficam com as colunas nulas.
 
 ### 1. Extração
 

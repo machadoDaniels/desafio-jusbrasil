@@ -22,6 +22,8 @@ MAX_MODEL_LEN="${MAX_MODEL_LEN:-32768}"
 GPU_MEMORY_UTILIZATION="${GPU_MEMORY_UTILIZATION:-0.92}"
 MAX_NUM_SEQS="${MAX_NUM_SEQS:-16}"
 ESPERA_MAXIMA=1800
+# Tempo máximo do enriquecimento, em minutos; ao estourar, materializa o banco com o que já foi feito.
+PRE_TEMPO_MAXIMO="${PRE_TEMPO_MAXIMO:-180}"
 export OPENAI_API_KEY="${OPENAI_API_KEY:-dummy}"
 export HF_HUB_OFFLINE=1
 export TRANSFORMERS_OFFLINE=1
@@ -104,19 +106,22 @@ log "pronto em $(duracao "$T")"
 
 ETAPA="pré-processamento"
 T=$SECONDS
-log "enriquecendo o banco em $WORKDIR/enriched.db"
+log "enriquecendo o banco em $WORKDIR/enriched.db (limite de $PRE_TEMPO_MAXIMO min)"
 PRE=(python3 -m desafio_jusbrasil.database_preprocessing
   --config configs/final_database_preprocessing.yaml
   --input "$DB" --output "$WORKDIR/enriched.db" --audit-dir "$WORKDIR/database-preprocessing")
 
 # O run completo não materializa o banco se algum documento ficar em revisão;
 # nesse caso materializa com o que existe (documentos sem resultado ficam com colunas nulas).
-if "${PRE[@]}"; then
+# Os checkpoints são gravados de forma atômica, então interromper no meio não corrompe nada.
+if timeout "${PRE_TEMPO_MAXIMO}m" "${PRE[@]}"; then
   log "concluído em $(duracao "$T")"
 else
   codigo=$?
   revisao="$WORKDIR/database-preprocessing/revisao.jsonl"
-  if [ -s "$revisao" ]; then
+  if [ "$codigo" -eq 124 ]; then
+    log "limite de $PRE_TEMPO_MAXIMO min atingido; materializando o banco com os documentos já processados"
+  elif [ -s "$revisao" ]; then
     log "$(wc -l < "$revisao") documentos sem resultado (ver $revisao); materializando o banco parcial"
   else
     log "falhou com código $codigo sem documentos em revisão; tentando materializar o que existe"
