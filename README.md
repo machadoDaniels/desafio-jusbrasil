@@ -1,16 +1,16 @@
 # Jusbrasil BRACIS 2026 — Caça-Alucinações
 
-This pipeline finds legal citations in TXT documents, extracts their structured fields, and verifies them against a canonical SQLite database. For each citation it outputs a span, a class (`real`, `inventada` or `incompleta`), a canonical ID for real citations, and a confidence value.
+Este pipeline encontra citações jurídicas em documentos TXT, extrai seus campos estruturados e as verifica contra uma base SQLite canônica. Para cada citação, gera um trecho (span), uma classe (`real`, `inventada` ou `incompleta`), o ID canônico das citações reais e um valor de confiança.
 
-Everything runs offline on one GPU with 24 GB of VRAM, with a single open model served locally by vLLM: [`google/gemma-4-12B-it-qat-w4a16-ct`](https://huggingface.co/google/gemma-4-12B-it-qat-w4a16-ct).
+Tudo roda offline em uma GPU de 24 GB de VRAM, com um único modelo aberto servido localmente pelo vLLM: [`google/gemma-4-12B-it-qat-w4a16-ct`](https://huggingface.co/google/gemma-4-12B-it-qat-w4a16-ct).
 
-## Final evaluation: how to run
+## Avaliação final: como executar
 
-### Requirements
+### Requisitos
 
-- Linux with one NVIDIA GPU with at least 24 GB of VRAM (developed for an RTX 4090), recent NVIDIA drivers and the NVIDIA Container Toolkit.
-- Docker. Nothing else is needed on the host: vLLM, Python and the model weights live in the image.
-- Internet access **only to build the image**, which downloads the dependencies and the model weights. Execution needs no network and calls no external API.
+- Linux com uma GPU NVIDIA de pelo menos 24 GB de VRAM (desenvolvido para uma RTX 4090), drivers NVIDIA recentes e o NVIDIA Container Toolkit.
+- Docker. Nada mais é necessário no host: o vLLM, o Python e os pesos do modelo ficam na imagem.
+- Acesso à internet **apenas para construir a imagem**, que baixa as dependências e os pesos do modelo. A execução não usa rede nem chama APIs externas.
 
 ### Build
 
@@ -18,40 +18,40 @@ Everything runs offline on one GPU with 24 GB of VRAM, with a single open model 
 docker build -t desafio-jusbrasil .
 ```
 
-The image is based on `vllm/vllm-openai:v0.29.0` and downloads the model weights at a fixed revision (`1d2c2d7f2466070e69d6fb3fd5ce9a7d75f2f6ee`) into the image. No weights are fetched at run time.
+A imagem é baseada em `vllm/vllm-openai:v0.29.0` e baixa para dentro dela os pesos do modelo em uma revisão fixa (`1d2c2d7f2466070e69d6fb3fd5ce9a7d75f2f6ee`). Nenhum peso é baixado em tempo de execução.
 
-### Run (single entry point)
+### Execução (ponto de entrada único)
 
-From the repository root, on the host:
+Na raiz do repositório, no host:
 
 ```bash
-bash run.sh <path_db> <txt_folder> <output_file>
+bash run.sh <caminho_db> <pasta_txt> <arquivo_saida>
 ```
 
-`<path_db>` is a database in the original format of the development sample (`desafio1_bracis.db`), and `<txt_folder>` contains one `<documento_id>.txt` per document. The output is a CSV in the submission format (`documento_id,citacoes`, with `inicio,fim,classe,id_canonico,confianca` entries separated by `|`, and `-` for documents without citations), produced by [`scripts/json_to_submission.py`](scripts/json_to_submission.py).
+`<caminho_db>` é uma base no formato original da amostra de desenvolvimento (`desafio1_bracis.db`), e `<pasta_txt>` contém um `<documento_id>.txt` por documento. A saída é um CSV no formato de submissão (`documento_id,citacoes`, com entradas `inicio,fim,classe,id_canonico,confianca` separadas por `|` e `-` para documentos sem citações), gerado por [`scripts/json_to_submission.py`](scripts/json_to_submission.py).
 
-If `<output_file>` is a folder, the CSV is written as `submission.csv` inside it.
+Se `<arquivo_saida>` for uma pasta, o CSV é gravado como `submission.csv` dentro dela.
 
-[`run.sh`](run.sh) builds the image if it does not exist yet (`IMAGEM` overrides the tag, default `desafio-jusbrasil:latest`) and runs it with `--network none`, mounting the database, the TXT folder (read-only), the output folder and `outputs/`. Inside the container, [`scripts/run_in_container.sh`](scripts/run_in_container.sh) performs every step without manual intervention:
+O [`run.sh`](run.sh) constrói a imagem se ela ainda não existir (`IMAGEM` sobrescreve a tag, padrão `desafio-jusbrasil:latest`) e a executa com `--network none`, montando a base, a pasta de TXT (somente leitura), a pasta de saída e `outputs/`. Dentro do container, [`scripts/run_in_container.sh`](scripts/run_in_container.sh) executa todas as etapas sem intervenção manual:
 
-1. Starts vLLM on `127.0.0.1:8000` with the pinned model revision and waits until it responds.
-2. **Enriches the database** given as input into a new copy (`outputs/final/enriched.db`) using the code in `src/desafio_jusbrasil/database_preprocessing`. The original database is never modified.
-3. Runs the four pipeline stages on the TXT folder against the enriched copy.
-4. Writes the submission CSV and stops the server.
+1. Sobe o vLLM em `127.0.0.1:8000` com a revisão fixa do modelo e espera até ele responder.
+2. **Enriquece a base** recebida em uma cópia nova (`outputs/final/enriched.db`) com o código de `src/desafio_jusbrasil/database_preprocessing`. A base original nunca é modificada.
+3. Roda as quatro etapas do pipeline sobre a pasta de TXT, consultando a cópia enriquecida.
+4. Grava o CSV de submissão e derruba o servidor.
 
-Intermediate checkpoints, audits and the vLLM log (`outputs/final/vllm.log`) are written to `outputs/` in the repository, owned by the host user. `GPUS` selects the GPU passed to Docker (default `all`, e.g. `GPUS='"device=0"'`).
+Checkpoints intermediários, auditorias e logs são gravados em `outputs/final/` no repositório, com posse do usuário do host: `run.log` (log de toda a execução, com horário, etapa e duração) e `vllm.log` (log do servidor). `GPUS` escolhe a GPU repassada ao Docker (padrão `all`; por exemplo, `GPUS='"device=0"'`).
 
-The image can also be run directly, without `run.sh`:
+A imagem também pode ser executada diretamente, sem o `run.sh`:
 
 ```bash
 docker run --rm --gpus all --network none --ipc=host \
-  -v /path/to/data:/dados -v /path/to/output:/saida \
-  desafio-jusbrasil /dados/<base>.db /dados/<txt_folder> /saida/submission.csv
+  -v /caminho/para/dados:/dados -v /caminho/para/saida:/saida \
+  desafio-jusbrasil /dados/<base>.db /dados/<pasta_txt> /saida/submission.csv
 ```
 
-### Running without Docker
+### Execução sem Docker
 
-On a machine with the GPU, `vllm` (v0.29.0) installed in the project environment and the model weights already in the Hugging Face cache, the in-container script runs directly:
+Em uma máquina com a GPU, o `vllm` (v0.29.0) instalado no ambiente do projeto e os pesos do modelo já no cache do Hugging Face, o script do container roda diretamente:
 
 ```bash
 uv sync
@@ -61,166 +61,166 @@ bash scripts/run_in_container.sh desafio-jusbrasil-bracis-2026/desafio1_bracis.d
   desafio-jusbrasil-bracis-2026/txt outputs/submission.csv
 ```
 
-The script sets `HF_HUB_OFFLINE=1`, so the weights must be downloaded beforehand.
+O script define `HF_HUB_OFFLINE=1`, então os pesos precisam ser baixados antes.
 
-### Execution settings
+### Configuração da execução
 
-| Setting | Value | Where |
+| Item | Valor | Onde |
 | --- | --- | --- |
-| Model | `google/gemma-4-12B-it-qat-w4a16-ct`, revision `1d2c2d7…` | `Dockerfile`, `scripts/run_in_container.sh` |
-| Server | vLLM `v0.29.0`, `--max-model-len 16384`, `--gpu-memory-utilization 0.92`, `--max-num-seqs 16`, `--reasoning-parser gemma4`, `--seed 0` | `scripts/run_in_container.sh` |
-| Sampling | `temperature: 0` in every model call | `configs/final_*.yaml` |
-| Concurrency | 8 requests | `configs/final_*.yaml` |
-| Pipeline config | [`configs/final_pipeline.yaml`](configs/final_pipeline.yaml) | |
-| Enrichment config | [`configs/final_database_preprocessing.yaml`](configs/final_database_preprocessing.yaml) | |
+| Modelo | `google/gemma-4-12B-it-qat-w4a16-ct`, revisão `1d2c2d7…` | `Dockerfile`, `scripts/run_in_container.sh` |
+| Servidor | vLLM `v0.29.0`, `--max-model-len 16384`, `--gpu-memory-utilization 0.92`, `--max-num-seqs 16`, `--reasoning-parser gemma4`, `--seed 0` | `scripts/run_in_container.sh` |
+| Amostragem | `temperature: 0` em todas as chamadas ao modelo | `configs/final_*.yaml` |
+| Concorrência | 8 requisições | `configs/final_*.yaml` |
+| Config do pipeline | [`configs/final_pipeline.yaml`](configs/final_pipeline.yaml) | |
+| Config do enriquecimento | [`configs/final_database_preprocessing.yaml`](configs/final_database_preprocessing.yaml) | |
 
-Inside the container, `MAX_MODEL_LEN`, `GPU_MEMORY_UTILIZATION`, `MAX_NUM_SEQS`, `PORTA` and `WORKDIR` can be overridden through environment variables.
+Dentro do container, `MAX_MODEL_LEN`, `GPU_MEMORY_UTILIZATION`, `MAX_NUM_SEQS`, `PORTA` e `WORKDIR` podem ser sobrescritos por variáveis de ambiente.
 
-### Reproducibility
+### Reprodutibilidade
 
-- All model calls use `temperature: 0` and the server runs with `--seed 0`. There is no sampling.
-- The model revision, the vLLM image and the Python dependencies (`uv.lock`) are pinned.
-- No absolute paths, manual steps or files outside the repository: the only extra artifact, the judge-name dictionary `data/relatores_padronizacao.json`, is versioned, included in the image and copied next to the enriched database.
-- Small numeric differences can still come from GPU kernels and request batching in vLLM.
+- Todas as chamadas ao modelo usam `temperature: 0` e o servidor roda com `--seed 0`. Não há amostragem.
+- A revisão do modelo, a imagem do vLLM e as dependências Python (`uv.lock`) são fixas.
+- Sem caminhos absolutos, passos manuais ou arquivos fora do repositório: o único artefato extra, o dicionário de nomes de relatores `data/relatores_padronizacao.json`, é versionado, incluído na imagem e copiado ao lado da base enriquecida.
+- Pequenas diferenças numéricas ainda podem vir dos kernels da GPU e do agrupamento de requisições no vLLM.
 
-### Compliance with the submission rules
+### Atendimento às regras de submissão
 
-| Rule | How it is met |
+| Regra | Como é atendida |
 | --- | --- |
-| Complete code | `src/desafio_jusbrasil/` (pipeline and database enrichment), `scripts/`, `configs/` |
-| README with approach and steps | This file |
-| Declared environment (Docker) | [`Dockerfile`](Dockerfile); `run.sh` executes everything inside it |
-| Model weights at a fixed revision | Downloaded during `docker build`, revision `1d2c2d7f2466070e69d6fb3fd5ce9a7d75f2f6ee` |
-| Single entry point | `bash run.sh <path_db> <txt_folder> <output_file>` |
-| GPU with up to 24 GB | One 12B model quantized to 4 bits (W4A16), 16k-token context |
-| Offline | Local vLLM server inside the container; `HF_HUB_OFFLINE=1`; `run.sh` uses `docker run --network none` |
-| Clean machine, no absolute paths | All paths are arguments or relative to the repository |
-| Enrichment code for a new `.db` | Each execution regenerates the enriched copy from the database it receives |
-| Development-only models | Not used at run time; only the model above is executed |
+| Código completo | `src/desafio_jusbrasil/` (pipeline e enriquecimento da base), `scripts/`, `configs/` |
+| README com abordagem e passos | Este arquivo |
+| Ambiente declarado (Docker) | [`Dockerfile`](Dockerfile); o `run.sh` executa tudo dentro dele |
+| Pesos em revisão fixa | Baixados no `docker build`, revisão `1d2c2d7f2466070e69d6fb3fd5ce9a7d75f2f6ee` |
+| Ponto de entrada único | `bash run.sh <caminho_db> <pasta_txt> <arquivo_saida>` |
+| GPU de até 24 GB | Um modelo de 12B quantizado em 4 bits (W4A16), contexto de 16k tokens |
+| Offline | Servidor vLLM local dentro do container; `HF_HUB_OFFLINE=1`; o `run.sh` usa `docker run --network none` |
+| Máquina limpa, sem caminhos absolutos | Todos os caminhos são argumentos ou relativos ao repositório |
+| Código de enriquecimento para um `.db` novo | Cada execução regera a cópia enriquecida a partir da base recebida |
+| Modelos usados só no desenvolvimento | Não são usados em tempo de execução; só o modelo acima é executado |
 
-## Approach
+## Abordagem
 
 ```mermaid
 flowchart LR
-    Z[Original .db] --> Y[0. Database enrichment: LLM]
-    A[Original TXT] --> B[1. Extraction: LLM + local span matching]
-    B --> C[2. Completeness: LLM]
-    C --> D[3. NER: parallel field extractors]
-    D --> E[4. Veracity: deterministic SQLite queries]
+    Z[.db original] --> Y[0. Enriquecimento da base: LLM]
+    A[TXT original] --> B[1. Extração: LLM + localização local do trecho]
+    B --> C[2. Completude: LLM]
+    C --> D[3. NER: extratores de campos em paralelo]
+    D --> E[4. Veracidade: consultas SQLite determinísticas]
     Y --> E
-    E --> F[Predictions and submission CSV]
+    E --> F[Predições e CSV de submissão]
 ```
 
-### 0. Database enrichment
+### 0. Enriquecimento da base
 
-The canonical database stores most identifiers only inside the document text. Enrichment copies the database and adds structured columns that stage 4 can query:
+A base canônica guarda a maior parte dos identificadores apenas dentro do texto dos documentos. O enriquecimento copia a base e acrescenta colunas estruturadas que a etapa 4 consegue consultar:
 
-- **Acórdãos:** CNJ number of the judged case, sequential number with the court class, court registry number, main procedural class, appeal chain (`cadeia_recursal`) and UF.
-- **Súmulas:** number and whether it is binding (`vinculante`).
-- **Legal provisions:** normalized legal instrument, instrument number and article.
-- `relator_norm`: deterministic normalization of the judge's name with `data/relatores_padronizacao.json`.
+- **Acórdãos:** número CNJ do processo julgado, número sequencial com a classe do tribunal, número de registro no tribunal, classe processual principal, cadeia recursal (`cadeia_recursal`) e UF.
+- **Súmulas:** número e se é vinculante (`vinculante`).
+- **Dispositivos legais:** diploma normalizado, número do diploma e artigo.
+- `relator_norm`: normalização determinística do nome do relator com `data/relatores_padronizacao.json`.
 
-Each document is sent once to the model with a per-type prompt, few-shot examples (`configs/few_shot_database_preprocessing.json`) and a JSON schema with closed vocabularies. Acórdãos are cut to their first 10,000 and last 2,000 characters, where these metadata usually appear. Numeric fields keep digits only, and CNJ numbers are validated against the text. If a document fails after the retries, the database is still materialized and that document keeps null columns (the execution script falls back to `--materializar`).
+Cada documento é enviado uma vez ao modelo, com prompt por tipo, exemplos few-shot (`configs/few_shot_database_preprocessing.json`) e um JSON schema com vocabulários fechados. Os acórdãos são cortados nos primeiros 10.000 e nos últimos 2.000 caracteres, onde esses metadados costumam aparecer. Campos numéricos guardam só dígitos, e os números CNJ são validados contra o texto. Se um documento falhar depois das novas tentativas, a base é materializada mesmo assim e esse documento fica com as colunas nulas (o script de execução recorre a `--materializar`).
 
-### 1. Extraction
+### 1. Extração
 
-The LLM returns the citation text and type. Python computes the offsets; the model never generates them.
+O LLM retorna o texto e o tipo da citação. O Python calcula os offsets; o modelo nunca os gera.
 
-The extractor first searches for the returned text literally. If that fails, it tries whitespace-normalized matching and maps the result back to the original document. A located citation stores the original slice `texto[inicio:fim]`, preserving its formatting. Offsets are Unicode character positions with an exclusive end.
+O extrator primeiro procura o texto retornado de forma literal. Se não encontrar, tenta uma correspondência com espaços em branco normalizados e mapeia o resultado de volta para o documento original. Uma citação localizada guarda o recorte original `texto[inicio:fim]`, preservando a formatação. Os offsets são posições de caracteres Unicode, com fim exclusivo.
 
-Oversized documents are split into overlapping chunks with token budgets and capacity-error handling. With `tokenizer_path: /tokenize`, token counts come from the vLLM server. Chunk offsets are translated to document offsets, and duplicate spans are merged. See [extraction limits and chunking](docs/extraction-limits.md).
+Documentos muito grandes são divididos em blocos sobrepostos, com orçamento de tokens e tratamento de erros de capacidade. Com `tokenizer_path: /tokenize`, a contagem de tokens vem do servidor vLLM. Os offsets de cada bloco são convertidos para offsets do documento, e trechos duplicados são unidos.
 
-Unlocated candidates never enter the final submission.
+Candidatos não localizados nunca entram na submissão final.
 
-### 2. Completeness
+### 2. Completude
 
-An LLM returns `completa: true` or `false`, using the citation and ±300 characters of context. It does not query the database or decide whether a citation is invented.
+Um LLM retorna `completa: true` ou `false`, usando a citação e ±300 caracteres de contexto. Ele não consulta a base nem decide se uma citação é inventada.
 
-The prompts require a searchable numbered reference for jurisprudence (case number, súmula or theme) and a numbered provision plus an identifiable legal instrument for legislation. Context may join parts of the same reference but must not supply identifiers from a different citation.
+Os prompts exigem uma referência numerada pesquisável para jurisprudência (número do processo, súmula ou tema) e, para legislação, um dispositivo numerado com um diploma identificável. O contexto pode juntar partes da mesma referência, mas não pode fornecer identificadores de outra citação.
 
-The call also requests token log-probabilities. The probability that the citation is incomplete is read from the `true`/`false` token of the answer and normalized between the two values. It is the confidence used for `incompleta` (see [Confidence](#confidence)).
+A chamada também pede os log-probabilities dos tokens. A probabilidade de a citação estar incompleta é lida do token `true`/`false` da resposta e normalizada entre os dois valores. É a confiança usada para `incompleta` (ver [Confiança](#confiança)).
 
-### 3. Parallel NER
+### 3. NER em paralelo
 
-Each extractor receives the original citation text and returns only its assigned fields. All calls use the same model; they run independently within a shared concurrency limit.
+Cada extrator recebe o texto original da citação e retorna só os campos que lhe cabem. Todas as chamadas usam o mesmo modelo e rodam de forma independente, sob um limite de concorrência compartilhado.
 
-| Extractor | Fields |
+| Extrator | Campos |
 | --- | --- |
-| Nature | `natureza`, `numero_sumula`, `sumula_vinculante` |
-| Identifiers | `numero_processo_cnj`, `numero_classe_tribunal`, `numero_registro_tribunal` |
-| Process class | `classe_processual`, `cadeia_recursal` |
-| Court | `tribunal` |
-| State | `uf` |
-| Year | `ano` |
-| Judge | `relator` |
-| Legal instrument and article | `diploma`, `numero_artigo` |
-| Legal instrument number | `numero_diploma` |
+| Natureza | `natureza`, `numero_sumula`, `sumula_vinculante` |
+| Identificadores | `numero_processo_cnj`, `numero_classe_tribunal`, `numero_registro_tribunal` |
+| Classe processual | `classe_processual`, `cadeia_recursal` |
+| Tribunal | `tribunal` |
+| UF | `uf` |
+| Ano | `ano` |
+| Relator | `relator` |
+| Diploma e artigo | `diploma`, `numero_artigo` |
+| Número do diploma | `numero_diploma` |
 
-Jurisprudence uses the first seven extractors; legislation uses the last two. The coordinator merges their fields and applies deterministic normalization, including CNJ handling and judge-name normalization into `relator_norm`.
+A jurisprudência usa os sete primeiros extratores; a legislação usa os dois últimos. O coordenador une os campos e aplica a normalização determinística, incluindo o tratamento do CNJ e a normalização do nome do relator em `relator_norm`.
 
-Each system prompt contains shared evidence rules, field-specific instructions, synthetic examples and the response JSON schema. Allowed values, including all 27 UF codes, come from the Python contracts. Each response is capped at 512 tokens; failed requests are retried and audited, never silently converted into empty fields. See [parallel entity extraction](docs/parallel-entity-extraction.md).
+Cada prompt de sistema traz regras de evidência compartilhadas, instruções específicas do campo, exemplos sintéticos e o JSON schema da resposta. Os valores permitidos, incluindo as 27 UFs, vêm dos contratos Python. Cada resposta é limitada a 512 tokens; requisições com falha são repetidas e auditadas, nunca convertidas em campos vazios em silêncio.
 
-### 4. Veracity
+### 4. Veracidade
 
-The verifier runs parameterized, read-only SQLite queries against the enriched columns. It does not call an LLM.
+O verificador executa consultas SQLite parametrizadas e somente leitura sobre as colunas enriquecidas. Ele não chama nenhum LLM.
 
-| Condition | Result | Confidence |
+| Condição | Resultado | Confiança |
 | --- | --- | --- |
-| `completa: false`, or entity output unavailable | `incompleta` (no lookup) | Stage 2 probability |
-| Extracted fields cannot form a supported query | `incompleta` | Stage 2 probability |
-| The query finds no matching record | `inventada` | 0.75 |
-| One canonical record matches | `real` with its canonical ID | 1.0 |
-| Several records remain after disambiguation by court, UF, year and judge | `real` with the smallest ID among them | 0.0 |
+| `completa: false`, ou saída de entidades indisponível | `incompleta` (sem consulta) | Probabilidade da etapa 2 |
+| Os campos extraídos não formam uma consulta suportada | `incompleta` | Probabilidade da etapa 2 |
+| A consulta não encontra nenhum registro | `inventada` | 0,75 |
+| Um único registro canônico corresponde | `real` com o seu ID canônico | 1,0 |
+| Vários registros restam depois de desambiguar por tribunal, UF, ano e relator | `real` com o menor ID entre eles | 0,0 |
 
-A separate `4_veracity_fts` module exists as an alternative implementation; it is not used by `run.sh` and does not set confidence.
+Existe um módulo separado, `4_veracity_fts`, como implementação alternativa; ele não é usado pelo `run.sh` e não define confiança.
 
-### Confidence
+### Confiança
 
-The official metric adds a Brier-based bonus over matched citations, where the target is 1 when the predicted class (and, for `real`, the canonical ID) is correct. Confidence therefore estimates whether the **final class** is right, not whether the span was extracted correctly, and it is set where that class is decided:
+A métrica oficial soma um bônus baseado no Brier sobre as citações pareadas, em que o alvo é 1 quando a classe prevista (e, para `real`, o ID canônico) está correta. Por isso a confiança estima se a **classe final** está certa, e não se o trecho foi bem extraído, e é definida onde essa classe é decidida:
 
-- `real` and `inventada`: constants set by stage 4 from the query outcome. On the development sample, single-record `real` was always correct, and about 75% of `inventada` were correct.
-- `incompleta`: the stage 2 probability that the citation is incomplete, from the model's log-probabilities. In a comparison on the development sample, it scored the same as asking the model to write a confidence value, which was always 1.0 and carried no information.
-- When stage 2 returns no probability, the confidence is omitted (`-`), which removes the citation from the Brier term instead of penalizing it.
+- `real` e `inventada`: constantes definidas pela etapa 4 conforme o resultado da consulta. Na amostra de desenvolvimento, `real` com um único registro sempre esteve correta, e cerca de 75% das `inventada` estavam corretas.
+- `incompleta`: a probabilidade, dada pela etapa 2, de a citação estar incompleta, a partir dos log-probabilities do modelo. Numa comparação na amostra de desenvolvimento, ela pontuou o mesmo que pedir ao modelo que escrevesse um valor de confiança, que foi sempre 1,0 e não trazia informação.
+- Quando a etapa 2 não retorna probabilidade, a confiança é omitida (`-`), o que tira a citação do termo de Brier em vez de penalizá-la.
 
-Materialization takes the confidence from stage 4 only.
+A materialização usa apenas a confiança da etapa 4.
 
-## Development
+## Desenvolvimento
 
 ### Setup
 
-Use Python 3.12 or newer:
+Use Python 3.12 ou mais recente:
 
 ```bash
 uv sync
 cp .env.example .env
 ```
 
-Set `OPENAI_API_KEY` in the environment or `.env`. For a local endpoint without authentication, the SDK still needs a nonempty placeholder such as `dummy`. Do not commit real credentials.
+Defina `OPENAI_API_KEY` no ambiente ou no `.env`. Para um endpoint local sem autenticação, o SDK ainda exige um valor não vazio, como `dummy`. Não faça commit de credenciais reais.
 
-The stage CLIs read a YAML config with `input_dir`, `workdir`, `database` and a model section per stage (`extractor`, `completeness`, `entities`). Paths are resolved from the working directory, so run the commands from the project root. Configs under `configs/` other than `final_*` are development experiments and may point to remote endpoints.
+As CLIs das etapas leem uma config YAML com `input_dir`, `workdir`, `database` e uma seção de modelo por etapa (`extractor`, `completeness`, `entities`). Os caminhos são resolvidos a partir do diretório de trabalho, então rode os comandos na raiz do projeto. As configs em `configs/` que não são `final_*` são experimentos de desenvolvimento e podem apontar para endpoints remotos.
 
-| Setting | Behavior |
+| Configuração | Comportamento |
 | --- | --- |
-| `temperature`, `top_p`, `top_k`, `reasoning_effort` | Null omits the setting and uses the server default. |
-| `async_requests` | Enables concurrent extraction/completeness when using their standalone stage CLIs. |
-| `max_concurrency` | Limits concurrent work; for NER, the shared runner limits individual LLM requests. |
-| `entities.max_retries` | Maximum application attempts per extractor call. |
-| `entities.request_timeout_seconds` | Per-attempt timeout, excluding time waiting for a concurrency slot. |
-| `extractor.debug` | Keeps unlocated candidates in intermediate checkpoints when true. |
-| `extractor.context_window_tokens`, `max_output_tokens`, `token_margin` | Control the extraction input/output budget. The smaller of the configured and server-reported context is used. |
-| `extractor.chunk_overlap_chars` | Adds shared context between extraction chunks. |
-| `extractor.tokenizer_path` | Tokenizer endpoint (`/tokenize` for vLLM); otherwise extraction uses a conservative byte-based estimate. |
+| `temperature`, `top_p`, `top_k`, `reasoning_effort` | Nulo omite a configuração e usa o padrão do servidor. |
+| `async_requests` | Ativa extração/completude concorrentes nas CLIs isoladas dessas etapas. |
+| `max_concurrency` | Limita o trabalho concorrente; no NER, o executor compartilhado limita as requisições individuais ao LLM. |
+| `entities.max_retries` | Número máximo de tentativas por chamada de extrator. |
+| `entities.request_timeout_seconds` | Timeout por tentativa, sem contar a espera por uma vaga de concorrência. |
+| `extractor.debug` | Quando verdadeiro, mantém os candidatos não localizados nos checkpoints intermediários. |
+| `extractor.context_window_tokens`, `max_output_tokens`, `token_margin` | Controlam o orçamento de entrada/saída da extração. É usado o menor valor entre o configurado e o informado pelo servidor. |
+| `extractor.chunk_overlap_chars` | Acrescenta contexto compartilhado entre os blocos de extração. |
+| `extractor.tokenizer_path` | Endpoint do tokenizador (`/tokenize` no vLLM); sem ele, a extração usa uma estimativa conservadora por bytes. |
 
-The entity coordinator and the enrichment both load `relatores_padronizacao.json` from the database's directory.
+O coordenador de entidades e o enriquecimento carregam `relatores_padronizacao.json` do diretório da base.
 
-### Running stages separately
+### Executando as etapas separadamente
 
 ```bash
 uv run python -m desafio_jusbrasil.database_preprocessing --config configs/final_database_preprocessing.yaml
 uv run desafio-jusbrasil --config configs/final_pipeline.yaml
 ```
 
-The enrichment CLI accepts `--input`, `--output` and `--audit-dir`, and `--materializar` builds the database from existing results without calling the model. The pipeline CLI accepts `--input-dir`, `--workdir` and `--database`. The stages can also run one at a time, each consuming the previous stage's checkpoints:
+A CLI de enriquecimento aceita `--input`, `--output` e `--audit-dir`, e `--materializar` monta a base a partir dos resultados existentes, sem chamar o modelo. A CLI do pipeline aceita `--input-dir`, `--workdir` e `--database`. As etapas também podem rodar uma de cada vez, cada uma consumindo os checkpoints da anterior:
 
 ```bash
 uv run python -m desafio_jusbrasil.1_extractor --config configs/final_pipeline.yaml
@@ -229,17 +229,17 @@ uv run python -m desafio_jusbrasil.3_entities --config configs/final_pipeline.ya
 uv run python -m desafio_jusbrasil.4_veracity --config configs/final_pipeline.yaml
 ```
 
-Use a fresh `workdir` for each experiment. The last command also exports the final prediction JSON files.
+Use um `workdir` novo para cada experimento. O último comando também exporta os JSONs finais de predição.
 
-### Evaluation and reports
+### Avaliação
 
-Generate local stage references from the published development annotations:
+Gere referências locais por etapa a partir das anotações de desenvolvimento publicadas:
 
 ```bash
 uv run scripts/generate_stage_golds.py --output outputs/gold
 ```
 
-Entity references also use local normalization and reviewed overrides; they are development annotations, not an independent benchmark. See [gold rules](docs/gold-rules.md).
+As referências de entidades também usam normalização local e correções revisadas; são anotações de desenvolvimento, não um benchmark independente.
 
 ```bash
 uv run scripts/evaluate_extraction.py outputs/my-run --gold outputs/gold
@@ -250,38 +250,38 @@ uv run scripts/clear_outputs.py outputs/my-run --gold outputs/gold
 uv run python scripts/evaluate_database_preprocessing.py outputs/database-preprocessing/<run>
 ```
 
-`clear_outputs.py` reads saved results without model calls and writes readable reports to `outputs/clear_outputs/<date-and-time>/`. See [readable report details](docs/clear-outputs.md).
+O `clear_outputs.py` lê os resultados salvos, sem chamar modelos, e grava relatórios legíveis em `outputs/clear_outputs/<data-e-hora>/`.
 
-To score a run with the official competition metric:
+Para pontuar uma execução com a métrica oficial da competição:
 
 ```bash
 uv run python scripts/json_to_submission.py outputs/my-run/predictions outputs/my-run/submission.csv
 uv run python scripts/evaluate.py outputs/my-run/submission.csv
 ```
 
-These commands create and score local files; they do not submit anything to Kaggle.
+Esses comandos criam e pontuam arquivos locais; não enviam nada ao Kaggle.
 
-### Development results
+### Resultados de desenvolvimento
 
-On the 26 development documents, a full run with `google/gemma-4-12B-it-qat-w4a16-ct`, temperature 0 and a database enriched by the same model (`outputs/run-20-gemma4-12B-it-qat`) scored **0.941** on the official metric, before the current confidence rules. A previous v2 run against the reference-enriched database (`data/desafio1_bracis_enriched_gold.db`) reached a strict overall F1 of 91.43%; see [the full v2 evaluation](reports/full-pipeline-v2-20260928.md).
+Nos 26 documentos de desenvolvimento, uma execução completa com `google/gemma-4-12B-it-qat-w4a16-ct`, temperatura 0 e uma base enriquecida pelo mesmo modelo (`outputs/run-20-gemma4-12B-it-qat`) obteve **0,941** na métrica oficial, antes das regras de confiança atuais. Uma execução anterior da v2 contra a base enriquecida de referência (`data/desafio1_bracis_enriched_gold.db`) chegou a um F1 estrito geral de 91,43%.
 
-The prompts use synthetic demonstrations, but the development corpus also informed prompt development. These numbers are development results, not an unseen-data benchmark. Run artifacts under `outputs/` are local and excluded from Git.
+Os prompts usam demonstrações sintéticas, mas o corpus de desenvolvimento também orientou a escrita dos prompts. Esses números são resultados de desenvolvimento, não um benchmark em dados não vistos. Os artefatos de execução em `outputs/` são locais e ficam fora do Git.
 
-### Checkpoints and audits
+### Checkpoints e auditorias
 
-Each stage writes `<stage>/<document_id>/resultado.json` and numbered audit files under `01-extraction`, `02-completeness`, `03-entities` and `04-veracity`; final JSON files are in `predictions/`. Audits record the requests, responses, attempts and timings of model calls, and the SQL, parameters, matched records and classification of each verification. Stage manifests record the configuration. Evaluators ignore manifests and numbered audit files.
+Cada etapa grava `<etapa>/<documento_id>/resultado.json` e arquivos de auditoria numerados em `01-extraction`, `02-completeness`, `03-entities` e `04-veracity`; os JSONs finais ficam em `predictions/`. As auditorias registram as requisições, respostas, tentativas e tempos das chamadas ao modelo, e o SQL, os parâmetros, os registros encontrados e a classificação de cada verificação. Os manifestos de cada etapa registram a configuração. Os avaliadores ignoram os manifestos e os arquivos de auditoria numerados.
 
-### Tests
+### Testes
 
 ```bash
 uv run python -m unittest discover -s tests
 ```
 
-The 74 tests run without inference.
+Os 74 testes rodam sem inferência.
 
-### Known limitations
+### Limitações conhecidas
 
-- Citations are not repaired or expanded when fragmented, and jurisprudence is not searched by court, year and judge alone; those references are `incompleta`. A design for this is in [v3_suggestion.md](v3_suggestion.md).
-- When several records match, the smallest ID is a deterministic choice, not a disambiguation.
-- The judge-name dictionary was built from the development database; names outside it are not normalized.
-- Enrichment with the 12B model agrees less with the reference metadata than larger models; fields it misses can turn real citations into `inventada`.
+- Citações fragmentadas não são reparadas nem expandidas, e jurisprudência não é buscada só por tribunal, ano e relator; essas referências ficam `incompleta`.
+- Quando vários registros correspondem, o menor ID é uma escolha determinística, não uma desambiguação.
+- O dicionário de nomes de relatores foi construído a partir da base de desenvolvimento; nomes fora dele não são normalizados.
+- O enriquecimento com o modelo de 12B concorda menos com os metadados de referência do que modelos maiores; campos que ele perde podem transformar citações reais em `inventada`.
