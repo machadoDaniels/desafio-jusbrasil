@@ -6,6 +6,7 @@
 **/__pycache__
 outputs
 data
+!data/relatores_padronizacao.json
 desafio-jusbrasil-bracis-2026
 desafio-jusbrasil-bracis-2026.zip
 docs

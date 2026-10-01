@@ -13,7 +13,7 @@ extractor:
   async_requests: true
   max_concurrency: 8
   debug: true
-  context_window_tokens: 32768
+  context_window_tokens: 16384
   tokenizer_path: /tokenize
 
 completeness:
