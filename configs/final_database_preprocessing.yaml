@@ -14,6 +14,8 @@ database_preprocessing:
   max_retries: 6
   retry_delay_seconds: 1
   request_timeout_seconds: 120
+  # Respostas válidas usam até ~320 tokens; o teto corta gerações em loop.
+  max_tokens: 1024
   text_start_char_limit: 10000
   text_end_char_limit: 2000
   extrair_verbatim: false

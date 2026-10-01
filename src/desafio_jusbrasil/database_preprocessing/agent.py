@@ -125,6 +125,8 @@ def _requisicao(
             if config["reasoning_effort"] is not None
             else omit
         ),
+        # Limita gerações degeneradas, que sem teto só param no timeout.
+        "max_completion_tokens": config.get("max_tokens") or omit,
         "messages": mensagens,
         "response_format": contrato,
         **({"extra_body": extra_body} if extra_body else {}),

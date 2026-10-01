@@ -173,6 +173,7 @@ async def executar_async(
             )
         },
         "request_timeout_seconds": configuracao.get("request_timeout_seconds"),
+        "max_tokens": configuracao.get("max_tokens"),
     }
     diretorio_auditoria.mkdir(parents=True, exist_ok=True)
     _escrever_json(
