@@ -278,6 +278,7 @@ class VerificadorVeracidade:
         if not registros:
             return ResultadoVeracidade(
                 classificacao=Classificacao.INVENTADA,
+                confianca=0.75,
                 justificativa="A consulta estruturada não encontrou registro canônico.",
             )
         if len(registros) > 1:
@@ -293,6 +294,7 @@ class VerificadorVeracidade:
         return ResultadoVeracidade(
             classificacao=Classificacao.REAL,
             id_canonico=registros[0]["id"],
+            confianca=1.0,
             justificativa="A consulta estruturada encontrou um único registro canônico.",
         )
 
@@ -320,6 +322,10 @@ def executar_veracidade(
                 verificacoes.append(verificacao)
             else:
                 resultado = _resultado_incompleto()
+            if resultado.classificacao == Classificacao.INCOMPLETA:
+                resultado = resultado.model_copy(
+                    update={"confianca": item.completude.probabilidade_incompleta}
+                )
             candidatos.append(
                 CandidatoClassificado(
                     candidato=item.candidato,

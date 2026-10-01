@@ -1,5 +1,6 @@
 import asyncio
 import json
+import math
 import sqlite3
 import tempfile
 import unittest
@@ -14,16 +15,19 @@ from desafio_jusbrasil.contracts import (
     CandidatoAnalisado,
     CandidatoCitacao,
     CandidatoCitacaoRequest,
+    CandidatoEntidades,
     Classificacao,
     ConsultaJurisprudencia,
     ConsultaJurisprudenciaAgente,
     ConsultaLegislacao,
     ConsultaLegislacaoAgente,
     DocumentoCompletude,
+    DocumentoEntidades,
     DocumentoExtraido,
     DocumentoPredito,
     LoteCandidatosRequest,
     ResultadoCompletude,
+    ResultadoCompletudeRequest,
     ResultadoVeracidade,
     StageConfig,
     TipoCitacao,
@@ -154,6 +158,7 @@ class VerificadorFake:
         resultado = ResultadoVeracidade(
             classificacao=Classificacao.REAL,
             id_canonico=28893055,
+            confianca=1.0,
             justificativa="registro único",
         )
         return resultado, {
@@ -359,7 +364,7 @@ class PipelineTest(unittest.TestCase):
             jurisprudencia, jurisprudencia.trecho
         )[0]["content"]
         self.assertNotEqual(prompt_lei, prompt_jurisprudencia)
-        self.assertEqual(set(ResultadoCompletude.model_fields), {"completa"})
+        self.assertEqual(set(ResultadoCompletudeRequest.model_fields), {"completa"})
 
     def test_entity_output_contract_fields(self) -> None:
         schema_jurisprudencia = ConsultaJurisprudencia.model_json_schema()["properties"]
@@ -591,6 +596,39 @@ class PipelineTest(unittest.TestCase):
         self.assertEqual(resultado.id_canonico, 3)
         self.assertEqual(resultado.confianca, 0.0)
 
+    def test_veracidade_confianca_por_resultado_da_consulta(self) -> None:
+        real = VerificadorVeracidade._classificar([{"id": 5, "documento_id": "doc"}])
+        inventada = VerificadorVeracidade._classificar([])
+
+        self.assertEqual((real.classificacao, real.confianca), (Classificacao.REAL, 1.0))
+        self.assertEqual(
+            (inventada.classificacao, inventada.confianca),
+            (Classificacao.INVENTADA, 0.75),
+        )
+
+    def test_completude_probabilidade_incompleta_vem_dos_logprobs(self) -> None:
+        def token(texto, logprob, alternativas=()):
+            return Mock(token=texto, logprob=logprob, top_logprobs=list(alternativas))
+
+        logprobs = Mock(
+            content=[
+                token('{"', 0.0),
+                token("completa", 0.0),
+                token('":', 0.0),
+                token(
+                    " false",
+                    math.log(0.6),
+                    [token(" false", math.log(0.6)), token(" true", math.log(0.2))],
+                ),
+                token("}", 0.0),
+            ]
+        )
+
+        self.assertAlmostEqual(
+            _completeness._probabilidade_incompleta(logprobs), 0.75
+        )
+        self.assertIsNone(_completeness._probabilidade_incompleta(None))
+
     def test_veracidade_sem_identificador_retorna_incompleta(self) -> None:
         verificador = object.__new__(VerificadorVeracidade)
 
@@ -743,6 +781,51 @@ class PipelineTest(unittest.TestCase):
 
             self.assertTrue((saida / "a" / "resultado.json").exists())
             self.assertFalse((saida / "b" / "resultado.json").exists())
+
+    def test_veracidade_incompleta_usa_probabilidade_da_completude(self) -> None:
+        with tempfile.TemporaryDirectory() as temporario:
+            raiz = Path(temporario)
+            entrada, saida = raiz / "entrada", raiz / "saida"
+            entrada.mkdir()
+            documento = DocumentoEntidades(
+                documento_id="doc",
+                candidatos=[
+                    CandidatoEntidades(
+                        candidato=CandidatoCitacao(
+                            trecho="julgado do STF",
+                            tipo=TipoCitacao.JURISPRUDENCIA,
+                            inicio=0,
+                            fim=14,
+                        ),
+                        completude=ResultadoCompletude(
+                            completa=False, probabilidade_incompleta=0.8
+                        ),
+                        campos_extraidos=None,
+                    )
+                ],
+            )
+            (entrada / "doc.json").write_text(
+                documento.model_dump_json(), encoding="utf-8"
+            )
+
+            executar_veracidade(entrada, saida, VerificadorFake())
+
+            resultado = json.loads(
+                (saida / "doc" / "resultado.json").read_text(encoding="utf-8")
+            )
+            veracidade = resultado["candidatos"][0]["veracidade"]
+            self.assertEqual(veracidade["classificacao"], "incompleta")
+            self.assertEqual(veracidade["confianca"], 0.8)
+
+            documento.candidatos[0].completude.probabilidade_incompleta = None
+            (entrada / "doc.json").write_text(
+                documento.model_dump_json(), encoding="utf-8"
+            )
+            executar_veracidade(entrada, saida, VerificadorFake())
+            resultado = json.loads(
+                (saida / "doc" / "resultado.json").read_text(encoding="utf-8")
+            )
+            self.assertIsNone(resultado["candidatos"][0]["veracidade"]["confianca"])
 
     def test_entities_extrai_campos_parciais_de_citacao_incompleta(self) -> None:
         with tempfile.TemporaryDirectory() as temporario:
@@ -967,7 +1050,7 @@ class PipelineTest(unittest.TestCase):
             )
             self.assertEqual(documento.citacoes[0].classificacao, Classificacao.REAL)
             self.assertEqual(documento.citacoes[0].resolucao.id_canonico, 28893055)
-            self.assertEqual(documento.citacoes[0].confianca, 0.75)
+            self.assertEqual(documento.citacoes[0].confianca, 1.0)
 
 
 if __name__ == "__main__":

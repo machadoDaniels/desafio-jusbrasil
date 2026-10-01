@@ -1,6 +1,6 @@
 # input_dir, workdir e database são sobrescritos pelo run.sh (--input-dir/--workdir/--database)
 input_dir: desafio-jusbrasil-bracis-2026/txt
-workdir: outputs/run-20-gemma4-12B-it-qat
+workdir: outputs/run-021-gemma4-12B-it-qat
 database: data/desafio1_bracis_enriched_gemma4-12B-it-qat-w4a16-ct.db
 
 extractor:

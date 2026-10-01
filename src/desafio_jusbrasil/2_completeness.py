@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import argparse
 import asyncio
+import math
 from pathlib import Path
 from typing import Any
 
@@ -23,6 +24,7 @@ from .contracts import (
     ModelConfig,
     PipelineConfig,
     ResultadoCompletude,
+    ResultadoCompletudeRequest,
     TipoCitacao,
 )
 from .utils import (
@@ -143,7 +145,9 @@ class AgenteCompletude:
             else omit,
             "top_p": self._config.top_p if self._config.top_p is not None else omit,
             "messages": self._mensagens(candidato, contexto),
-            "response_format": ResultadoCompletude,
+            "response_format": ResultadoCompletudeRequest,
+            "logprobs": True,
+            "top_logprobs": 5,
             "reasoning_effort": self._config.reasoning_effort
             if self._config.reasoning_effort is not None
             else omit,
@@ -168,7 +172,7 @@ class AgenteCompletude:
         return criar_auditoria(
             requisicao,
             resposta,
-            ResultadoCompletude,
+            ResultadoCompletudeRequest,
             resultado=resultado.model_dump(mode="json"),
         )
 
@@ -180,7 +184,7 @@ class AgenteCompletude:
         entrada = {
             nome: valor for nome, valor in requisicao.items() if valor is not omit
         }
-        entrada["response_format"] = ResultadoCompletude.model_json_schema()
+        entrada["response_format"] = ResultadoCompletudeRequest.model_json_schema()
         return {
             "input": entrada,
             "output": {"erro_validacao": erro.errors(include_input=True)},
@@ -192,10 +196,29 @@ class AgenteCompletude:
         requisicao: dict,
         resposta: Any,
     ) -> tuple[ResultadoCompletude, dict[str, Any]]:
-        resultado = resposta.choices[0].message.parsed
-        if resultado is None:
+        escolha = resposta.choices[0]
+        if escolha.message.parsed is None:
             raise RuntimeError("o modelo não retornou uma análise estruturada")
+        resultado = ResultadoCompletude(
+            completa=escolha.message.parsed.completa,
+            probabilidade_incompleta=_probabilidade_incompleta(escolha.logprobs),
+        )
         return resultado, cls._auditoria(requisicao, resposta, resultado)
+
+
+def _probabilidade_incompleta(logprobs: Any) -> float | None:
+    """P(completa = false) no token do booleano, normalizada entre true e false."""
+    for token in getattr(logprobs, "content", None) or []:
+        if token.token.strip() not in ("true", "false"):
+            continue
+        massa = {"true": 0.0, "false": 0.0}
+        for alternativa in token.top_logprobs or [token]:
+            valor = alternativa.token.strip()
+            if valor in massa:
+                massa[valor] += math.exp(alternativa.logprob)
+        total = massa["true"] + massa["false"]
+        return massa["false"] / total if total > 0 else None
+    return None
 
 
 def _obter_contexto(

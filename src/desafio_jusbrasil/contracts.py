@@ -221,8 +221,13 @@ class DocumentoExtraido(Contract):
         return self
 
 
-class ResultadoCompletude(Contract):
+class ResultadoCompletudeRequest(Contract):
     completa: bool
+
+
+class ResultadoCompletude(ResultadoCompletudeRequest):
+    # P(completa = false) segundo os logprobs do modelo; não faz parte do schema enviado.
+    probabilidade_incompleta: float | None = Field(default=None, ge=0, le=1)
 
 
 class CandidatoAnalisado(Contract):
