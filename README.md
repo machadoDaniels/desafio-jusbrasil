@@ -208,7 +208,16 @@ Esses comandos criam e pontuam arquivos locais; não enviam nada ao Kaggle.
 
 ### Resultados de desenvolvimento
 
-Nos 26 documentos de desenvolvimento, com `google/gemma-4-12B-it-qat-w4a16-ct`, temperatura 0 e a base enriquecida pelo mesmo modelo, a etapa 4 atual (com o fallback FTS) obteve **0,923** na métrica oficial, contra 0,907 sem o fallback. As etapas 1 a 3 vieram de uma execução anterior às regras de confiança atuais, então a confiança das `incompleta` não entrou nessa medida.
+Nos 26 documentos de desenvolvimento, `bash run.sh desafio-jusbrasil-bracis-2026/desafio1_bracis.db desafio-jusbrasil-bracis-2026/txt output/` em uma RTX 4090, offline, obteve **0,983** na métrica oficial (`scripts/evaluate.py`):
+
+| Nível | Macro F1 | F1 `real` | F1 `inventada` | F1 `incompleta` | Score |
+| --- | --- | --- | --- | --- | --- |
+| 1 | 0,983 | 0,981 | 0,969 | 1,000 | 1,061 |
+| 2 | 0,891 | 0,905 | 0,875 | 0,895 | 0,944 |
+
+A execução levou 12min52s: 1min55s para subir o vLLM, 7min47s de enriquecimento (986 de 1.014 documentos com resultado; os outros 28 ficaram com colunas nulas) e 3min10s para as quatro etapas. O enriquecimento reaproveitou checkpoints de uma execução anterior interrompida, então o tempo de uma execução do zero é maior.
+
+Isoladamente, o fallback FTS da etapa 4 levou o score de 0,907 para 0,923 numa execução anterior, com as mesmas etapas 1 a 3.
 
 Os prompts usam demonstrações sintéticas, mas o corpus de desenvolvimento também orientou a escrita dos prompts. Esses números são resultados de desenvolvimento, não um benchmark em dados não vistos. Os artefatos de execução em `outputs/` são locais e ficam fora do Git.
 
